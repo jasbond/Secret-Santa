@@ -1,0 +1,24 @@
+{
+  "name": "pere-noel-secret",
+  "version": "1.0.0",
+  "description": "Père Noël secret : tirage au sort et messagerie anonyme entre participants",
+  "type": "module",
+  "private": true,
+  "license": "MIT",
+  "engines": {
+    "node": ">=22.13"
+  },
+  "scripts": {
+    "start": "node --disable-warning=ExperimentalWarning src/index.js",
+    "test": "node --disable-warning=ExperimentalWarning --test test/*.test.js",
+    "test:libsql": "TEST_DB=libsql node --disable-warning=ExperimentalWarning --test test/*.test.js && TEST_DB=libsql-http node --disable-warning=ExperimentalWarning --test test/*.test.js",
+    "creer-groupe": "node scripts/creer-groupe.js"
+  },
+  "dependencies": {
+    "@libsql/client": "0.18.0",
+    "web-push": "3.6.7"
+  },
+  "devDependencies": {
+    "http_ece": "1.2.0"
+  }
+}

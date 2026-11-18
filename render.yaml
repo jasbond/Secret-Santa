@@ -1,0 +1,19 @@
+# Render Blueprint : New + → Blueprint → choisir ce dépôt (voir README,
+# « Mettre en ligne gratuitement (Render + Turso) »).
+# Offre gratuite : pas de disque persistant, les données sont donc chez Turso.
+services:
+  - type: web
+    name: pere-noel-secret
+    runtime: docker
+    plan: free
+    region: oregon
+    dockerfilePath: ./Dockerfile
+    healthCheckPath: /healthz
+    autoDeploy: true
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: TURSO_DATABASE_URL
+        sync: false
+      - key: TURSO_AUTH_TOKEN
+        sync: false

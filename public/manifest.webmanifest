@@ -1,0 +1,30 @@
+{
+  "name": "Secret Santa",
+  "short_name": "Secret Santa",
+  "description": "Tirage au sort et discussions anonymes avec ton Père Noël secret.",
+  "display": "standalone",
+  "background_color": "#0a1a33",
+  "theme_color": "#0a1a33",
+  "lang": "fr",
+  "icons": [
+    {
+      "src": "/static/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/static/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/static/icon-maskable-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ],
+  "scope": "/"
+}
