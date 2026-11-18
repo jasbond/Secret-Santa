@@ -487,7 +487,7 @@ async function runDraw(button) {
     button.disabled = true;
     state = await api('POST', `${base}/draw`, {});
   } catch (err) {
-    if (err.code !== 'predictable') {
+    if (err.code !== 'predictable' && err.code !== 'mutual') {
       button.disabled = false;
       toast(err.message, 'error');
       await load(); // la page n'était peut-être plus à jour

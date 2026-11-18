@@ -120,8 +120,11 @@ test('parcours complet : tirage, anonymat, messagerie, révélation', async () =
   assert.equal(res.json.exclusions.length, 1);
   assert.equal((await admin('POST', `${A}/exclusions`, { a: byName.Alice.id, b: byName.Alice.id })).status, 400);
 
-  // Tirage
+  // Tirage : à 4 avec un couple exclu, seules 2 chaînes sont possibles (devinable)
   res = await admin('POST', `${A}/draw`, {});
+  assert.equal(res.status, 409);
+  assert.equal(res.json.code, 'predictable');
+  res = await admin('POST', `${A}/draw`, { force: true });
   assert.equal(res.status, 200);
   assert.equal(res.json.group.drawn, true);
   assert.equal((await admin('POST', `${A}/draw`, {})).status, 409, 'pas de double tirage');
@@ -239,7 +242,7 @@ test('parcours complet : tirage, anonymat, messagerie, révélation', async () =
   assert.equal((await admin('POST', `${A}/reveal`, { revealed: true })).status, 409);
 
   // Nouveau tirage possible
-  assert.equal((await admin('POST', `${A}/draw`, {})).status, 200);
+  assert.equal((await admin('POST', `${A}/draw`, { force: true })).status, 200);
   assert.ok((await people.Bob.d('GET', people.Bob.url)).json.recipient);
 });
 
@@ -389,6 +392,42 @@ test('tirage devinable à cause des exclusions : avertissement puis tirage forc�
   res = await admin('POST', `${A}/draw`, { force: true });
   assert.equal(res.status, 200);
   assert.equal(res.json.group.drawn, true);
+});
+
+test('échange à deux inévitable : avertissement « mutual » puis tirage forcé', async () => {
+  // 3 « centres » et 4 binômes : chaque binôme ne peut tirer qu'en lui-même ou vers un
+  // centre. 4 binômes pour 3 centres : au moins un binôme s'offre mutuellement. Chacun a
+  // au moins 4 personnes possibles, donc rien n'est « devinable » au sens habituel.
+  const names = ['H1', 'H2', 'H3', 'A1', 'A2', 'B1', 'B2', 'C1', 'C2', 'D1', 'D2'];
+  const { admin, adminToken, view } = await createGroup(names);
+  const A = `/api/admin/${adminToken}`;
+  const pods = view.participants.filter((p) => !p.name.startsWith('H'));
+  for (let i = 0; i < pods.length; i++) {
+    for (let j = i + 1; j < pods.length; j++) {
+      if (pods[i].name[0] !== pods[j].name[0]) await admin('POST', `${A}/exclusions`, { a: pods[i].id, b: pods[j].id });
+    }
+  }
+  let res = await admin('POST', `${A}/draw`, {});
+  assert.equal(res.status, 409);
+  assert.equal(res.json.code, 'mutual');
+  assert.match(res.json.error, /mutuellement/);
+  assert.equal((await admin('GET', A)).json.group.drawn, false, 'rien d’enregistré');
+  res = await admin('POST', `${A}/draw`, { force: true });
+  assert.equal(res.status, 200);
+  assert.equal(res.json.group.drawn, true);
+});
+
+test('Père Noël devinable avec deux personnes possibles (chaîne unique)', async () => {
+  const names = ['Chloe', 'Dany', 'Jason', 'Jessy', 'Kalea', 'Kea', 'Miti', 'Reva', 'Salomé', 'Tom', 'Ugo', 'Veldea', 'Welma'];
+  const { admin, adminToken, view } = await createGroup(names);
+  const A = `/api/admin/${adminToken}`;
+  const [chloe, ...others] = view.participants;
+  for (const p of others.slice(0, 10)) await admin('POST', `${A}/exclusions`, { a: chloe.id, b: p.id });
+  const res = await admin('POST', `${A}/draw`, {});
+  assert.equal(res.status, 409);
+  assert.equal(res.json.code, 'predictable');
+  assert.match(res.json.error, /Chloe/);
+  assert.doesNotMatch(res.json.error, /Veldea|Welma/);
 });
 
 test('pas de modification après un tirage concurrent (état relu en base)', async () => {

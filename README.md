@@ -19,7 +19,7 @@ Application web de **Père Noël secret** (Secret Santa) avec **messagerie anony
 - **L'organisateur ne peut pas lire les discussions en cachette.** S'il réinitialise le code de quelqu'un pour entrer à sa place, cela laisse une trace impossible à effacer : le participant voit un avertissement (« le code de ce lien a été réinitialisé le … »), et la page organisateur l'affiche aussi. Si l'organisateur ouvrait un lien avant son propriétaire pour y choisir le code, le vrai participant ne pourrait plus entrer sans demander une réinitialisation, et l'avertissement apparaîtrait alors.
 - **Révélation transparente** : si l'organisateur révèle les Pères Noël à tout le monde puis les masque à nouveau, une trace datée reste affichée chez tous les participants (qui ont pu les voir entre-temps).
 - **Lien ouvert par quelqu'un d'autre** : si un code a été choisi sur un lien avant que son propriétaire ne l'ouvre, l'écran de connexion affiche la date à laquelle ce code a été choisi. Le vrai participant peut ainsi s'en rendre compte.
-- **Petits groupes et exclusions** : à 3 participants, chacun peut deviner son Père Noël (c'est forcément la personne à qui il n'offre pas), et l'application le signale avant le tirage. De même, si des exclusions ne laissent qu'une seule possibilité à quelqu'un, le tirage serait devinable : l'application prévient et demande confirmation.
+- **Petits groupes et exclusions** : à 3 participants, chacun peut deviner son Père Noël (c'est forcément la personne à qui il n'offre pas), et l'application le signale avant le tirage. De même, si des exclusions rendent le Père Noël de quelqu'un devinable (par exemple quelqu'un qui n'a plus que deux personnes possibles : il offre à l'une et reçoit de l'autre, ou 4 participants dont un couple exclu), ou obligent deux personnes à s'offrir mutuellement leur cadeau, l'application prévient et demande confirmation.
 - En dehors de l'organisateur, seule la personne qui héberge le serveur ou la base de données (par exemple le compte Turso) pourrait techniquement voir le tirage et les messages.
 
 ## Lancer en local
@@ -153,12 +153,12 @@ src/
   app.js     routes, en-têtes de sécurité, cookies, lecture des requêtes
   store.js   règles métier, validation, contrôle d'accès (requêtes SQL)
   db.js      accès à la base : fichier SQLite (node:sqlite) ou Turso (@libsql/client)
-  draw.js    algorithme du tirage (dérangement uniforme + exclusions)
+  draw.js    algorithme du tirage (une seule grande chaîne + exclusions)
 public/      pages web (HTML/CSS/JS sans framework)
 test/        tests automatiques (node --test)
 ```
 
-- **Tirage** : tirage uniforme par rejet parmi toutes les solutions valides (personne ne se tire soi-même, exclusions respectées). En cas de nombreuses exclusions, repli sur un couplage biparti qui trouve toujours une solution si elle existe, et sinon signale que c'est impossible.
+- **Tirage** : le tirage forme une seule grande chaîne qui passe par tout le monde (A → B → C → … → A). Ton Père Noël n'est donc jamais la personne à qui tu offres, ce qui garde secrètes les deux discussions anonymes. Sans exclusion, toutes les chaînes sont équiprobables. Avec des exclusions : quelques essais au hasard, puis une recherche systématique avec élagage. Si les exclusions empêchent une chaîne unique, on fait plusieurs cercles d'au moins 3 personnes (jamais d'échange à deux évitable) ; un échange à deux n'est accepté que s'il est inévitable, et l'organisateur est alors prévenu avant le tirage. Si aucun tirage n'est possible, l'application le signale.
 - **Limites anti-abus** : 20 créations de groupe par heure et par adresse IP, 30 tentatives de connexion par 10 minutes et par adresse IP, et 10 sessions au maximum par participant.
 - **Sécurité** : jetons aléatoires de 144 bits dans les liens, jeton organisateur stocké haché, cookies de session `HttpOnly` + `SameSite=Lax` (+ `Secure` en HTTPS), API exigeant du JSON (protection CSRF), Content-Security-Policy stricte, `Referrer-Policy: no-referrer` pour que les liens secrets ne fuient pas, tout le texte affiché via `textContent` (pas d'injection HTML possible).
 - **Messagerie** : rafraîchissement automatique toutes les 4 secondes quand la page est visible.

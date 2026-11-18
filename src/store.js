@@ -1,5 +1,5 @@
 import { randomBytes, createHash, scryptSync, timingSafeEqual } from 'node:crypto';
-import { drawAssignments } from './draw.js';
+import { drawDetailed, guessableIds } from './draw.js';
 import { openDatabase } from './db.js';
 
 export class HttpError extends Error {
@@ -644,22 +644,6 @@ export async function createStore(target = ':memory:', { now = () => Date.now() 
     });
   }
 
-  /**
-   * Avec des exclusions trop nombreuses, certaines personnes n'ont qu'un seul
-   * donneur ou receveur possible : le résultat devient devinable par
-   * l'organisateur (qui voit les exclusions). On le signale avant le tirage.
-   */
-  function predictableNames(ids, exclusions, names) {
-    if (ids.length <= 3) return [];
-    const excluded = new Map(ids.map((id) => [id, 0]));
-    for (const [a, b] of exclusions) {
-      excluded.set(a, excluded.get(a) + 1);
-      excluded.set(b, excluded.get(b) + 1);
-    }
-    // Possibles = tout le monde sauf soi-même et ses exclusions (relation symétrique).
-    return ids.filter((id) => ids.length - 1 - excluded.get(id) < 2).map((id) => names.get(id));
-  }
-
   async function draw(group, { force = false } = {}) {
     await db.transaction(async (t) => {
       const fresh = await t.get('SELECT drawn_at, auto_reveal, event_date, time_zone FROM groups WHERE id = ?', group.id);
@@ -675,20 +659,28 @@ export async function createStore(target = ':memory:', { now = () => Date.now() 
         throw new HttpError(400, `Il faut au moins ${LIMITS.minParticipantsForDraw} participants pour faire le tirage.`);
       }
       const exclusions = (await t.all('SELECT a_id, b_id FROM exclusions WHERE group_id = ?', group.id)).map((e) => [e.a_id, e.b_id]);
-      if (!force) {
-        const names = new Map(people.map((p) => [p.id, p.name]));
-        const predictable = predictableNames(ids, exclusions, names);
-        if (predictable.length) {
-          throw new HttpError(409,
-            `Avec ces exclusions, le tirage serait devinable pour : ${predictable.join(', ')} (une seule personne possible). Retire des exclusions, ou confirme pour tirer quand même.`,
-            'predictable');
-        }
-      }
-      const result = drawAssignments(ids, exclusions);
+      const result = drawDetailed(ids, exclusions);
       if (!result) {
         throw new HttpError(409, 'Tirage impossible avec ces exclusions : retires-en quelques-unes et réessaie.');
       }
-      for (const [giver, receiver] of result) {
+      if (!force) {
+        const names = new Map(people.map((p) => [p.id, p.name]));
+        const predictable = guessableIds(ids, exclusions).map((id) => names.get(id));
+        const warnings = [];
+        if (predictable.length) {
+          warnings.push(`le tirage serait devinable pour : ${predictable.join(', ')} (en voyant à qui elles offrent, elles devineraient qui est leur Père Noël)`);
+        }
+        if (result.mutualPairs.length) {
+          const pairs = result.mutualPairs.map(([a, b]) => `${names.get(a)} et ${names.get(b)}`).join(', ');
+          warnings.push(`impossible de faire une seule chaîne : des personnes s'offriraient mutuellement leur cadeau, par exemple ${pairs} (leur Père Noël serait la personne à qui elles offrent)`);
+        }
+        if (warnings.length) {
+          throw new HttpError(409,
+            `Avec ces exclusions, ${warnings.join(' ; et ')}. Retire des exclusions, ou confirme pour tirer quand même.`,
+            predictable.length ? 'predictable' : 'mutual');
+        }
+      }
+      for (const [giver, receiver] of result.assignments) {
         await t.run('INSERT INTO assignments (group_id, giver_id, receiver_id) VALUES (?, ?, ?)', group.id, giver, receiver);
       }
       await t.run('UPDATE groups SET drawn_at = ?, revealed_at = NULL WHERE id = ?', now(), group.id);
