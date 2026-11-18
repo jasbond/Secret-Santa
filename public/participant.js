@@ -1241,9 +1241,8 @@ function updateQuickbar() {
     }, `💬 ${unread} nouveau${unread > 1 ? 'x' : ''} message${unread > 1 ? 's' : ''}`));
   }
   const wish = document.getElementById('wishlist-input');
-  // Pas sur « Sa lettre » (c'est la lettre de quelqu'un d'autre) ni sur « Ma lettre » (on y est déjà).
-  const letterTab = currentTab === 'salettre' || currentTab === 'lettre';
-  if (!letterTab && !state.group.revealed && !exchangeReached() && !state.me.wishlist && !(wish && wish.value.trim())) {
+  // Seulement sur l'onglet « Ma lettre ».
+  if (currentTab === 'lettre' && !state.group.revealed && !exchangeReached() && !state.me.wishlist && !(wish && wish.value.trim())) {
     const late = state.group.wishlistDeadline && daysUntil(state.group.wishlistDeadline) < 0;
     links.push(el('a', {
       href: '#lettre', class: `quick${late ? ' quick-hot' : ''}`,
