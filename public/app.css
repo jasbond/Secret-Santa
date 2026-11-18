@@ -10,6 +10,9 @@
 @font-face { font-family: "Nunito"; font-weight: 600; font-display: swap; src: url("/static/nunito-600.woff2") format("woff2"); }
 @font-face { font-family: "Nunito"; font-weight: 700; font-display: swap; src: url("/static/nunito-700.woff2") format("woff2"); }
 @font-face { font-family: "Nunito"; font-weight: 800; font-display: swap; src: url("/static/nunito-800.woff2") format("woff2"); }
+/* Écriture manuscrite de la lettre au Père Noël (Caveat, licence OFL) */
+@font-face { font-family: "Caveat"; font-weight: 500; font-display: swap; src: url("/static/caveat-500.woff2") format("woff2"); }
+@font-face { font-family: "Caveat"; font-weight: 700; font-display: swap; src: url("/static/caveat-700.woff2") format("woff2"); }
 
 :root {
   /* Cartes (thème clair) */
@@ -51,6 +54,13 @@
 
   --display: "Fredoka", "Nunito", ui-rounded, system-ui, -apple-system, "Segoe UI", sans-serif;
   --body: "Nunito", ui-rounded, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --hand: "Caveat", "Segoe Print", "Bradley Hand", "Chalkboard SE", "Comic Sans MS", cursive;
+  /* Papier à lettre (reste clair en thème sombre : c'est une vraie feuille) */
+  --letter-bg: #fffaf0;
+  --letter-edge: #efe2c6;
+  --letter-ink: #23305e;
+  --letter-rule: rgba(52, 92, 160, 0.2);
+  --letter-margin: rgba(198, 47, 62, 0.35);
   color-scheme: light;
 }
 
@@ -75,6 +85,10 @@
     --focus: #8cb4ff;
     --ring: rgba(255, 116, 130, 0.25);
     --card-shadow: 0 18px 40px -16px rgba(0, 0, 0, 0.75), 0 2px 6px rgba(0, 0, 0, 0.3);
+    --letter-bg: #efe6d2;
+    --letter-edge: #cdbb94;
+    --letter-ink: #1f2a52;
+    --letter-rule: rgba(52, 92, 160, 0.24);
     color-scheme: dark;
   }
 }
@@ -288,19 +302,11 @@ p.center > .btn-ghost:hover:not(:disabled) { color: var(--scene-text); border-co
 .step:hover:not(.active) { border-color: var(--muted); }
 
 /* ---------- Discussions ---------- */
-.tabs { display: flex; gap: 4px; padding: 4px; margin-bottom: 12px; border-radius: 16px; background: var(--paper-2); }
-.tab {
-  flex: 1; min-width: 0; font: inherit; font-weight: 800; font-size: 0.92rem; min-height: 46px; padding: 8px 10px;
-  border-radius: 12px; border: 0; background: transparent; color: var(--muted); cursor: pointer;
-  display: inline-flex; align-items: center; justify-content: center; gap: 6px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-}
-.tab:hover:not(.active) { color: var(--ink); }
-.tab.active { background: var(--berry-strong); color: #fff; box-shadow: 0 2px 0 var(--berry-deep); }
+/* (les onglets .tabs / .tab sont définis plus bas, section « Onglets en haut de la page participant ») */
 .count {
   background: var(--berry-strong); color: #fff; border-radius: 999px; font-size: 0.75rem; min-width: 20px; height: 20px; padding: 0 6px;
   display: inline-flex; align-items: center; justify-content: center; flex: none;
 }
-.tab.active .count { background: #fff; color: var(--berry-strong); }
 .chat-banner { font-size: 0.9rem; font-weight: 600; background: var(--info-bg); color: var(--info); border-radius: 12px; padding: 9px 12px; }
 .messages {
   height: min(52vh, 440px); overflow-y: auto; border-radius: 16px; padding: 14px 12px;
@@ -1345,3 +1351,286 @@ body.chat-open .msg-alert { top: calc(84px + env(safe-area-inset-top, 0px)); }
 }
 .field-help { display: block; margin-top: 6px; font-weight: 600; }
 .organiser-btn { margin-top: 2px; }
+
+/* =========================================================================
+   Onglets en haut de la page participant : Mon tirage · Ma lettre · Sa lettre · Messages
+   ========================================================================= */
+#tab-anchor { height: 0; }
+.tabbar {
+  --tb-bg: rgba(255, 250, 242, 0.94);
+  --tb-line: rgba(138, 90, 18, 0.28);
+  --tb-text: #5d4b50;
+  --tb-hover: rgba(198, 47, 62, 0.08);
+  --tb-ring: #fffaf2;
+  position: sticky; top: 0; z-index: 30;
+  margin: -22px calc(-1 * max(16px, env(safe-area-inset-left, 0px))) 18px;
+  padding: calc(10px + env(safe-area-inset-top, 0px)) max(8px, env(safe-area-inset-left, 0px)) 10px;
+  background:
+    radial-gradient(1.5px 1.5px at 12% 30%, rgba(242, 184, 75, 0.55), transparent 60%),
+    radial-gradient(1.5px 1.5px at 38% 78%, rgba(198, 47, 62, 0.35), transparent 60%),
+    radial-gradient(1.5px 1.5px at 66% 22%, rgba(242, 184, 75, 0.55), transparent 60%),
+    radial-gradient(1.5px 1.5px at 91% 70%, rgba(29, 107, 72, 0.4), transparent 60%),
+    var(--tb-bg);
+  -webkit-backdrop-filter: blur(14px) saturate(1.3); backdrop-filter: blur(14px) saturate(1.3);
+  border-bottom: 1px solid var(--tb-line);
+  box-shadow: 0 12px 28px -18px rgba(3, 10, 25, 0.9);
+}
+@media (prefers-color-scheme: dark) {
+  .tabbar {
+    --tb-bg: rgba(9, 22, 44, 0.9);
+    --tb-line: rgba(242, 184, 75, 0.26);
+    --tb-text: #c9d5e6;
+    --tb-hover: rgba(255, 255, 255, 0.07);
+    --tb-ring: #0b1c37;
+  }
+}
+/* Fine guirlande rouge, or et vert sous les onglets */
+.tabbar::after {
+  content: ""; position: absolute; left: 0; right: 0; bottom: -3px; height: 3px;
+  background: repeating-linear-gradient(90deg, #c62f3e 0 18px, #f2b84b 18px 22px, #1d6b48 22px 40px, #f2b84b 40px 44px);
+}
+.tabs {
+  display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); gap: 4px;
+  max-width: 640px; margin: 0 auto; padding: 4px; border-radius: 18px; background: var(--paper-2);
+}
+.tab {
+  position: relative; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px;
+  min-width: 0; min-height: 56px; padding: 7px 2px 6px; border: 0; border-radius: 15px; overflow: visible;
+  background: transparent; color: var(--tb-text); cursor: pointer;
+  font: 800 0.75rem/1.15 var(--body); letter-spacing: 0.005em; white-space: nowrap;
+  transition: background-color 0.18s, color 0.18s, transform 0.08s, box-shadow 0.18s;
+  -webkit-tap-highlight-color: transparent;
+}
+/* Survol seulement avec une vraie souris : sur iPhone, le survol « colle » après un toucher */
+@media (hover: hover) {
+  .tab:hover { background: var(--tb-hover); color: var(--ink); }
+}
+.tab:active { transform: translateY(1px); }
+.tab:focus-visible { outline: 3px solid var(--focus); outline-offset: 1px; }
+.tab[aria-selected="true"] {
+  color: #fff;
+  background:
+    radial-gradient(130% 100% at 15% 0%, rgba(255, 255, 255, 0.22), transparent 55%),
+    linear-gradient(160deg, #cf3445 0%, #a51d2d 62%, #8a1525 100%);
+  box-shadow: inset 0 0 0 1px rgba(255, 220, 160, 0.35), 0 3px 0 #b9821c, 0 10px 18px -10px rgba(122, 18, 32, 0.9);
+}
+/* L'onglet choisi garde son texte blanc, même sous la souris */
+.tab[aria-selected="true"], .tab[aria-selected="true"]:hover { color: #fff; }
+/* Petite étoile dorée au-dessus de l'onglet choisi */
+.tab[aria-selected="true"]::before {
+  content: "✦"; position: absolute; top: 2px; right: 7px; font-size: 0.6rem; line-height: 1; color: #ffd98a;
+  text-shadow: 0 0 6px rgba(255, 210, 120, 0.9);
+}
+.tab-icon { position: relative; font-size: 1.32rem; line-height: 1.1; }
+.tab-label { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tab-badge {
+  position: absolute; top: 3px; left: calc(50% + 7px);
+  min-width: 20px; height: 20px; padding: 0 6px; border-radius: 999px;
+  display: inline-flex; align-items: center; justify-content: center;
+  font: 800 0.72rem/1 var(--body); color: #fff; background: #e0293d;
+  box-shadow: 0 0 0 2px var(--tb-ring); white-space: nowrap; pointer-events: none;
+}
+.tab-badge-todo {
+  top: -7px; left: 50%; transform: translateX(-50%);
+  height: 17px; min-width: 0; padding: 0 7px; font-size: 0.64rem; letter-spacing: 0.02em;
+  background: linear-gradient(180deg, #ffd47e, #f2b84b); color: #3a2604;
+  box-shadow: 0 0 0 2px var(--tb-ring), 0 0 12px 2px rgba(242, 184, 75, 0.75);
+}
+/* Sur l'onglet choisi (rouge), l'anneau des pastilles prend la couleur de l'onglet */
+.tab[aria-selected="true"] .tab-badge { --tb-ring: #8a1525; }
+/* Pastille de messages sur l'onglet choisi : blanche, pas de rouge sur rouge */
+.tab[aria-selected="true"] .tab-badge-count { background: #fff; color: #a51d2d; box-shadow: 0 0 0 2px #ffd98a; }
+@media (max-width: 699px) {
+  /* Sur téléphone, l'étoile dorée laisse la place à la pastille */
+  .tab[aria-selected="true"].has-badge::before { display: none; }
+}
+@media (prefers-reduced-motion: no-preference) {
+  .tab-badge-count { animation: count-hop 1.4s ease-in-out infinite; }
+  .tab-badge-todo { animation: tab-todo-glow 1.6s ease-in-out infinite; }
+  .tab-panel:not([hidden]) { animation: panel-in 0.22s ease-out; }
+}
+@keyframes tab-todo-glow {
+  0%, 100% { box-shadow: 0 0 0 2px var(--tb-ring), 0 0 5px 1px rgba(242, 184, 75, 0.45); }
+  50% { box-shadow: 0 0 0 2px var(--tb-ring), 0 0 18px 5px rgba(242, 184, 75, 0.95); }
+}
+@keyframes panel-in { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+.tab-panel:focus { outline: none; }
+.tab-panel > :first-child, .tab-panel > :first-child > .card:first-child { margin-top: 0; }
+/* Sur ordinateur : icône et texte côte à côte, barre arrondie flottante */
+@media (min-width: 700px) {
+  .tabbar { top: 10px; margin: -24px 0 22px; border-radius: 22px; padding: 7px; border: 1px solid var(--tb-line); }
+  .tabbar::after { left: 26px; right: 26px; border-radius: 3px; }
+  .tabs { display: flex; }
+  .tab { flex: 1 1 auto; flex-direction: row; gap: 9px; min-height: 50px; padding-inline: 12px; font-size: 1rem; }
+  .tab-icon { font-size: 1.2rem; }
+  .tab-label { overflow: visible; }
+  .tab-badge { position: static; transform: none; margin-left: -2px; flex-shrink: 0; }
+  .tab-badge-todo { height: 20px; font-size: 0.72rem; }
+}
+@media (max-width: 340px) {
+  .tab { font-size: 0.69rem; padding-inline: 1px; }
+  .tab-icon { font-size: 1.18rem; }
+}
+.card { scroll-margin-top: 96px; }
+.logout { margin-top: 18px; }
+
+/* Messages / Sa lettre avant le tirage (ou avant d'avoir ouvert son cadeau) */
+.chat-soon .hero-icon, .letter-soon .hero-icon { filter: none; }
+.chat-soon h2, .letter-soon h2 { justify-content: center; }
+.letter-soon p { max-width: 36ch; margin-inline: auto; }
+/* Étiquette cadeau : lien vers sa lettre */
+.card.target .tag-letter {
+  margin-top: 14px; background: rgba(255, 255, 255, 0.16); border-color: rgba(255, 255, 255, 0.45);
+  color: #fff; box-shadow: none;
+}
+.card.target .tag-letter:hover:not(:disabled) { background: rgba(255, 255, 255, 0.26); border-color: #fff; }
+.gift-card .gift-progress { border-top: 0; margin-top: 0; padding-top: 0; }
+.gift-card .gift-progress h3 { margin-top: 0; }
+
+/* =========================================================================
+   La lettre au Père Noël : une vraie feuille (papier ancien, houx, timbre, cachet de cire)
+   ========================================================================= */
+.letter-paper {
+  --lh: 2rem;
+  --pad-x: 22px;
+  position: relative; margin: 14px 0 6px; color: var(--letter-ink);
+  padding: 30px var(--pad-x) 22px;
+  background:
+    url("/static/paper.svg"),
+    radial-gradient(130% 80% at 100% 0%, rgba(255, 255, 255, 0.75), transparent 55%),
+    radial-gradient(120% 90% at 0% 100%, rgba(196, 150, 84, 0.26), transparent 60%),
+    radial-gradient(160% 120% at 50% 50%, transparent 62%, rgba(150, 104, 40, 0.2) 100%),
+    var(--letter-bg);
+  /* Bordure de fête : rayures rouge, or et vert, puis un filet doré à l'intérieur */
+  border: 7px solid transparent;
+  border-image: repeating-linear-gradient(-45deg, #c62f3e 0 9px, #fffaf0 9px 13px, #1d6b48 13px 22px, #fffaf0 22px 26px, #d9a13a 26px 29px, #fffaf0 29px 33px) 7;
+  box-shadow: inset 0 0 0 5px var(--letter-bg), inset 0 0 0 6px rgba(185, 130, 28, 0.55), 0 18px 30px -18px rgba(40, 20, 0, 0.6), 0 2px 4px rgba(40, 20, 0, 0.12);
+  transform: rotate(-0.4deg);
+}
+.letter-holly {
+  position: absolute; top: -20px; left: -22px; width: 92px; height: 62px; z-index: 2;
+  background: url("/static/holly.svg") center / contain no-repeat;
+  transform: rotate(-14deg); filter: drop-shadow(0 3px 3px rgba(30, 15, 0, 0.25)); pointer-events: none;
+}
+/* Timbre dentelé (les trous laissent voir le papier) */
+.letter-stamp {
+  position: absolute; top: 14px; right: 16px; z-index: 1; width: 58px; padding: 5px;
+  display: flex; flex-direction: column; align-items: center; gap: 2px;
+  background: radial-gradient(circle at 4px 4px, transparent 2.2px, #fffdf8 2.6px) -4px -4px / 8px 8px;
+  transform: rotate(4deg); filter: drop-shadow(0 2px 3px rgba(40, 20, 0, 0.28));
+}
+.letter-stamp-art { display: block; width: 48px; height: 44px; background: url("/static/stamp.svg") center / cover no-repeat; }
+/* (plus de légende sous le timbre : le cachet dit « Pôle Nord ») */
+.letter-stamp small { font: 800 0.46rem/1.3 var(--body); letter-spacing: 0.12em; text-transform: uppercase; color: #b42a3a; white-space: nowrap; }
+/* Cachet de la poste, à l'encre, qui chevauche le timbre */
+.letter-postmark {
+  position: absolute; top: 46px; right: 50px; z-index: 2; width: 54px; height: 54px; border-radius: 50%;
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1px;
+  border: 2px solid rgba(35, 48, 94, 0.5); box-shadow: inset 0 0 0 3px transparent, inset 0 0 0 4px rgba(35, 48, 94, 0.32);
+  color: rgba(35, 48, 94, 0.62); transform: rotate(-16deg); pointer-events: none;
+  font: 800 0.5rem/1.1 var(--body); letter-spacing: 0.12em; text-transform: uppercase; text-align: center;
+}
+.letter-postmark .pm-star { font-size: 0.45rem; letter-spacing: 0; }
+.letter-postmark::after {
+  content: ""; position: absolute; top: 18px; right: 52px; width: 34px; height: 20px;
+  background: repeating-linear-gradient(180deg, transparent 0 4px, rgba(35, 48, 94, 0.42) 4px 5.5px);
+  -webkit-mask: radial-gradient(60% 120% at 100% 50%, #000 60%, transparent 100%); mask: radial-gradient(60% 120% at 100% 50%, #000 60%, transparent 100%);
+}
+.letter-greeting {
+  position: relative; font: 700 2.1rem/1.05 var(--hand); color: #b42a3a;
+  margin: 26px 120px 12px 4px; text-shadow: 0 1px 0 rgba(255, 255, 255, 0.6);
+}
+/* Le texte, posé sur des lignes comme une vraie feuille */
+.letter-text, textarea.letter-body {
+  font: 500 1.45rem/var(--lh) var(--hand); color: var(--letter-ink);
+  background-image: repeating-linear-gradient(180deg, transparent 0 calc(var(--lh) - 1px), var(--letter-rule) calc(var(--lh) - 1px) var(--lh));
+  background-color: transparent;
+}
+.letter-text { white-space: pre-wrap; margin: 0; padding: 0 6px; border-radius: 0; min-height: calc(var(--lh) * 3); }
+.letter-text a { color: #1d4fa8; text-decoration-thickness: 1px; }
+.letter-empty-text { color: rgba(35, 48, 94, 0.55); }
+textarea.letter-body {
+  display: block; width: 100%; min-height: calc(var(--lh) * 7 + 4px); padding: 0 6px; margin: 0;
+  border: 0; border-radius: 4px; resize: none; overflow-y: auto;
+  background-attachment: local; caret-color: #b42a3a;
+}
+textarea.letter-body::placeholder { color: rgba(35, 48, 94, 0.46); opacity: 1; }
+textarea.letter-body:focus { border: 0; box-shadow: 0 0 0 2px rgba(185, 130, 28, 0.55); background-color: rgba(255, 255, 255, 0.35); }
+.letter-foot { display: flex; align-items: flex-end; justify-content: space-between; gap: 12px; margin-top: 10px; }
+.letter-sign { font: 500 1.5rem/1.15 var(--hand); text-align: right; margin: 0 2px 0 auto; }
+.letter-name { display: block; font: 700 2.1rem/1.05 var(--hand); color: #b42a3a; transform: rotate(-3deg); transform-origin: right center; }
+/* Cachet de cire rouge */
+.letter-seal {
+  position: relative; flex: none; width: 58px; height: 58px; margin: 0 0 -4px -4px;
+  display: flex; align-items: center; justify-content: center;
+  border-radius: 47% 53% 50% 48% / 52% 46% 54% 48%;
+  background: radial-gradient(circle at 34% 28%, #ec5b68 0%, #b8202f 38%, #8c1322 70%, #6a0c18 100%);
+  box-shadow: 0 3px 6px rgba(60, 10, 15, 0.45), inset 0 -3px 6px rgba(50, 0, 8, 0.45), inset 0 2px 3px rgba(255, 170, 170, 0.35);
+  transform: rotate(-10deg);
+}
+.letter-seal::before {
+  content: ""; position: absolute; inset: 9px; border-radius: 50%;
+  border: 1.5px solid rgba(70, 0, 10, 0.45); box-shadow: 0 1px 0 rgba(255, 160, 160, 0.3), inset 0 1px 0 rgba(255, 160, 160, 0.25);
+}
+.letter-seal span { font-size: 1.25rem; line-height: 1; color: #7a0f1d; text-shadow: 0 1px 0 rgba(255, 150, 150, 0.45), 0 -1px 0 rgba(40, 0, 6, 0.5); }
+/* Version compacte (écran d'accueil) */
+.letter-paper.compact { --lh: 1.85rem; --pad-x: 16px; padding-top: 26px; padding-bottom: 16px; }
+.letter-paper.compact .letter-greeting { font-size: 1.8rem; margin-top: 20px; }
+.letter-paper.compact textarea.letter-body { min-height: calc(var(--lh) * 5 + 4px); font-size: 1.34rem; }
+.letter-paper.compact .letter-sign { font-size: 1.32rem; }
+.letter-paper.compact .letter-name { font-size: 1.7rem; }
+.letter-paper.compact .letter-seal { width: 48px; height: 48px; }
+.letter-paper.compact .letter-seal::before { inset: 7px; }
+/* Téléphone : le timbre et le cachet ont leur propre ligne, « Cher Père Noël, » en dessous */
+@media (max-width: 480px) {
+  .letter-paper { --pad-x: 16px; padding-top: 22px; }
+  .letter-greeting { margin: 56px 0 10px 2px; font-size: 1.95rem; }
+  .letter-paper.compact .letter-greeting { margin-top: 54px; }
+  .letter-stamp { right: 10px; top: 10px; width: 52px; }
+  .letter-stamp-art { width: 42px; height: 38px; }
+  .letter-postmark { top: 38px; right: 44px; width: 48px; height: 48px; }
+  .letter-holly { width: 80px; height: 54px; left: -18px; top: -18px; }
+  .letter-text, textarea.letter-body { font-size: 1.36rem; }
+}
+.letter-card h2, .letter-read h2 { flex-wrap: wrap; }
+.letter-card .actions .muted { flex-basis: 100%; }
+.letter-card .actions .btn-ghost { color: var(--berry); }
+.letter-preview .letter-text { min-height: calc(var(--lh) * 3); }
+/* Date limite de la lettre */
+.letter-deadline {
+  width: fit-content; max-width: 100%; line-height: 1.4;
+  margin: 2px 0 6px; padding: 6px 12px; border-radius: 14px;
+  background: var(--gold-bg); border: 1px solid rgba(242, 184, 75, 0.7); color: var(--ink);
+  font-weight: 800; font-size: 0.86rem;
+}
+.letter-deadline-when { color: var(--gold); white-space: nowrap; }
+.letter-deadline.soon { background: color-mix(in srgb, var(--berry) 12%, var(--paper)); border-color: var(--berry); }
+.letter-deadline.soon .letter-deadline-when { color: var(--berry); }
+/* Rubriques à ajouter dans la lettre */
+.rubrics { margin-top: 16px; }
+.rubrics-title { font-weight: 800; font-size: 0.9rem; color: var(--muted); margin: 0 0 8px; }
+.rubric-list { display: flex; flex-wrap: wrap; gap: 6px; }
+.rubric {
+  display: inline-flex; align-items: center; gap: 5px; min-height: 38px; padding: 5px 12px; border-radius: 999px;
+  border: 1.5px dashed color-mix(in srgb, var(--gold-bright) 70%, var(--line)); background: var(--paper-2); color: var(--ink);
+  font: 700 0.86rem var(--body); cursor: pointer; transition: border-color 0.15s, background-color 0.15s;
+}
+.rubric:hover { border-color: var(--berry); }
+.rubric-done { display: none; color: var(--pine); font-weight: 800; }
+.rubric.used { border-style: solid; border-color: var(--pine); background: var(--pine-bg); }
+.rubric.used .rubric-done { display: inline; }
+.rubric { text-align: left; }
+@media (max-width: 340px) {
+  .rubric { font-size: 0.8rem; padding-inline: 10px; gap: 4px; }
+}
+#wishlist-card.needs-fill .letter-paper { box-shadow: inset 0 0 0 5px var(--letter-bg), inset 0 0 0 6px rgba(185, 130, 28, 0.55), 0 0 0 3px rgba(242, 184, 75, 0.55), 0 18px 30px -18px rgba(40, 20, 0, 0.6); }
+/* La lettre de la personne à qui on offre */
+.letter-read .letter-paper { margin-bottom: 8px; }
+.letter-read-actions { margin-top: 14px; }
+.letter-missing { background: var(--paper-2); border-radius: 14px; padding: 12px 14px; }
+.mission-done { margin: 12px 0 0; padding: 10px 12px; border-radius: 12px; background: var(--pine-bg); color: var(--pine); font-weight: 800; text-align: center; }
+.wish-modal .letter-paper { margin-top: 22px; }
+.wish-modal textarea.letter-body { min-height: calc(var(--lh) * 5 + 4px); }
+@media (prefers-color-scheme: dark) {
+  .letter-paper { box-shadow: inset 0 0 0 5px var(--letter-bg), inset 0 0 0 6px rgba(185, 130, 28, 0.55), 0 18px 34px -16px rgba(0, 0, 0, 0.85); }
+}

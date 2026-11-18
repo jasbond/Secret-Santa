@@ -17,8 +17,9 @@ let renderedDrawnAt; // drawnAt du tirage affiché à l'écran
 let renderedRevealed; // révélation affichée à l'écran
 let failedAttemptsNotice = 0; // essais ratés signalés à la connexion, jusqu'à ce que le participant les ait vus
 let codeCreatedNotice = false; // code tout juste choisi : rappel de bien le retenir
-let wishlistDraft = null;
-let unwrapping = false; // animation d'ouverture du cadeau en cours // brouillon de liste non enregistré, gardé même quand la carte est cachée (révélation)
+let wishlistDraft = null; // brouillon de lettre non enregistré, gardé même quand la carte est cachée (révélation)
+let unwrapping = false; // animation d'ouverture du cadeau en cours
+let currentTab = null; // onglet affiché (« tirage », « lettre », « salettre », « messages »…), gardé dans l'adresse (#lettre)
 let revealOpened = 0; // nombre de cadeaux déjà ouverts dans l'animation de révélation
 let revealTimer = null;
 let lastInfoKey = null; // évite de redessiner (et de perdre le focus) quand rien n'a changé
@@ -128,7 +129,7 @@ function datesCard(sfx = '') {
   // Après l'échange, la date limite n'est plus qu'une information (ni « dépassée », ni en surbrillance).
   const urge = !g.revealed && !state.me.wishlist && !exchangeReached();
   const marks = [
-    deadline ? { iso: deadline, kind: 'deadline', label: 'date limite de la liste de souhaits' } : null,
+    deadline ? { iso: deadline, kind: 'deadline', label: 'date limite de la lettre au Père Noël' } : null,
     g.eventDate ? { iso: g.eventDate, kind: 'exchange', label: 'échange des cadeaux' } : null,
   ].filter(Boolean);
   // Une ligne de la légende : un appui affiche le bon mois dans le calendrier.
@@ -153,7 +154,7 @@ function datesCard(sfx = '') {
     renderCalendar(marks, sfx),
     el('ul', { class: 'date-list' },
       row('today', '☀️', "Aujourd'hui", todayLocal(), formatDate(todayLocal())),
-      row('deadline', '📝', 'Liste de souhaits à remplir avant le',
+      row('deadline', '✉️', 'Lettre au Père Noël à écrire avant le',
         deadline || null,
         deadline ? formatDate(deadline) : 'Pas de date limite',
         deadline ? (deadlineLate && !exchangeReached() ? 'Date dépassée' : relativeDay(deadline)) : null,
@@ -179,7 +180,7 @@ function redrawDates(focusKey) {
 // Découverte de la personne à qui on offre : un cadeau à ouvrir, une seule fois
 // ---------------------------------------------------------------------------
 const unwrapKey = () => `ss_unwrapped_${token}_${state.group.drawnAt}`;
-// Brouillon de liste de souhaits pas encore enregistré : gardé sur l'appareil (l'onglet peut
+// Brouillon de lettre au Père Noël pas encore enregistré : gardé sur l'appareil (l'onglet peut
 // être rechargé, ex. iPhone qui libère la mémoire d'un onglet en arrière-plan).
 const draftKey = () => `ss_wish_draft_${token}`;
 const forgetDraft = () => { try { localStorage.removeItem(draftKey()); } catch { /* stockage indisponible */ } };
@@ -324,6 +325,7 @@ function openGiftOverlay(recipientName) {
     }
     // Arrivée depuis une notification de message : la discussion vient de s'ouvrir par-dessus.
     if (chat?.isOpen()) return;
+    selectTab('tirage', { scroll: false }); // le prénom est dans « Mon tirage »
     const tag = document.querySelector('.card.target');
     if (tag) {
       tag.classList.add('tag-arrive');
@@ -369,7 +371,7 @@ function openGiftOverlay(recipientName) {
   box.focus({ preventScroll: true });
 }
 
-let wishlistPromptDone = false; // la liste plein écran n'est proposée qu'une fois, à la première connexion
+let wishlistPromptDone = false; // la lettre plein écran n'est proposée qu'une fois, à la première connexion
 let onboardingDone = false; // calendrier + liste en plein écran : seulement à la toute première connexion
 
 /** Première connexion : le calendrier en plein écran (les dates à retenir), puis « Continuer ». */
@@ -403,17 +405,17 @@ function openDatesOverlay(onDone) {
 }
 
 /**
- * Première connexion : la liste de souhaits en plein écran, page floutée derrière, pour
- * qu'on la remplisse en premier (ou plus tard). onDone est appelé quand elle se ferme.
+ * Première connexion : la lettre au Père Noël en plein écran, page floutée derrière, pour
+ * qu'on l'écrive en premier (ou plus tard). onDone est appelé quand elle se ferme.
  */
 function openWishlistOverlay(onDone) {
   if (document.querySelector('.gift-overlay')) return;
   wishlistPromptDone = true;
   const { me, group } = state;
   const area = el('textarea', {
-    rows: '6', maxlength: '3000', id: 'wish-first', value: wishlistDraft ?? me.wishlist ?? '',
-    placeholder: 'Ex. : un livre de cuisine, des bougies parfumées, taille M, j’adore le bleu, pas de chocolat…',
-    'aria-describedby': 'wish-first-help',
+    rows: '6', maxlength: '3000', id: 'wish-first', class: 'letter-body', value: wishlistDraft ?? me.wishlist ?? '',
+    placeholder: LETTER_PLACEHOLDER,
+    'aria-label': 'Ma lettre au Père Noël', 'aria-describedby': 'wish-first-help',
   });
   // Gardé au fil de la frappe (l'onglet peut être rechargé) : la carte de la page suit le texte.
   area.addEventListener('input', () => {
@@ -429,18 +431,18 @@ function openWishlistOverlay(onDone) {
     else forgetDraft();
   });
   const error = formError();
-  const save = el('button', { class: 'btn btn-primary btn-block', type: 'submit' }, '💾 Enregistrer ma liste');
+  const save = el('button', { class: 'btn btn-primary btn-block', type: 'submit' }, '💾 Enregistrer ma lettre');
   const later = el('button', { class: 'btn btn-ghost btn-block wish-later', type: 'button' }, 'Remplir plus tard');
   const form = el('form', { novalidate: true },
-    el('label', { class: 'field', for: 'wish-first' }, el('span', {}, 'Ce qui te ferait plaisir')),
-    area, error,
+    letterSheet(area, me.name, { compact: true }),
+    error,
     el('div', { class: 'wish-actions' }, save, later),
   );
   const panel = el('div', { class: 'wish-modal card' },
     el('p', { class: 'eyebrow' }, `Bienvenue ${me.name} !`),
-    el('h2', { id: 'wish-title' }, '📝 Ta liste de souhaits'),
-    el('p', { id: 'wish-first-help' }, 'Commence par ça : ton Père Noël secret s’en servira pour te trouver le cadeau parfait. Écris tes envies, tes goûts, ta taille, ce que tu n’aimes pas… Tu pourras la modifier quand tu veux.'),
-    group.wishlistDeadline ? el('p', { class: 'wish-deadline' }, `📅 À remplir avant le ${shortDate(group.wishlistDeadline)}`) : null,
+    el('h2', { id: 'wish-title' }, '✉️ Ta lettre au Père Noël'),
+    el('p', { id: 'wish-first-help' }, 'Commence par ça : ton Père Noël secret la lira pour te trouver le cadeau parfait. Raconte-lui tes envies, tes goûts, ta taille, ce que tu n’aimes pas… Tu pourras la modifier quand tu veux, dans l’onglet « Ma lettre ».'),
+    group.wishlistDeadline ? el('p', { class: 'wish-deadline' }, `📅 À écrire avant le ${shortDate(group.wishlistDeadline)}`) : null,
     form,
   );
   const overlay = el('div', { class: 'gift-overlay wish-overlay', role: 'dialog', 'aria-modal': 'true', 'aria-labelledby': 'wish-title' }, panel);
@@ -470,19 +472,22 @@ function openWishlistOverlay(onDone) {
   document.addEventListener('keydown', onKey);
   form.addEventListener('submit', async (e) => {
     e.preventDefault();
-    if (!area.value.trim()) return showFormError(error, 'Écris au moins une idée, ou choisis « Remplir plus tard ».', area);
+    if (!area.value.trim()) return showFormError(error, 'Écris au moins une idée dans ta lettre, ou choisis « Remplir plus tard ».', area);
     const result = await withButton(save, () => api('PUT', `${base}/wishlist`, { wishlist: area.value }));
     if (!result) return;
     state.me.wishlist = result.wishlist;
     wishlistDraft = null;
     forgetDraft();
-    redrawDates(); // la date limite n'est plus « à remplir » (doré)
+    redrawDates(); // la date limite n'est plus « à écrire » (doré)
     const pageInput = document.getElementById('wishlist-input');
     if (pageInput) {
-      pageInput.value = result.wishlist;
+      // Le texte suivait la frappe (brouillon) : il est maintenant enregistré.
+      pageInput.dataset.dirty = '';
       pageInput.syncSaved?.(result.wishlist);
+      pageInput.value = result.wishlist;
+      pageInput.dispatchEvent(new Event('input'));
     }
-    toast('Liste de souhaits enregistrée ! 🎁', 'success');
+    toast('Lettre au Père Noël enregistrée ! 🎅', 'success');
     updateQuickbar();
     close();
   });
@@ -592,7 +597,7 @@ function howTo({ open = false, budget = '', eventDate = '' } = {}) {
     el('li', {}, el('span', { class: 'howto-icon', 'aria-hidden': 'true' }, '🎅'),
       el('span', {}, 'Quelqu\'un d\'autre t\'offre aussi un cadeau : c\'est ', el('strong', {}, 'ton Père Noël secret'), '. Tu ne sais pas qui c\'est !')),
     el('li', {}, el('span', { class: 'howto-icon', 'aria-hidden': 'true' }, '💬'),
-      el('span', {}, el('strong', {}, 'Écris-lui anonymement'), ' pour trouver le cadeau parfait, et remplis ta liste de souhaits pour aider ton Père Noël.')),
+      el('span', {}, el('strong', {}, 'Écris-lui anonymement'), ' pour trouver le cadeau parfait, et écris ta lettre au Père Noël pour l’aider à te trouver le cadeau parfait.')),
     el('li', {}, el('span', { class: 'howto-icon', 'aria-hidden': 'true' }, '🎁'),
       el('span', {}, el('strong', {}, 'Le jour de l\'échange'),
         eventDate ? ` (${formatDate(eventDate)})` : '',
@@ -627,7 +632,8 @@ const exchangeReached = () => Boolean(state.group.eventDate) && daysUntil(state.
 
 const shortDate = (iso) => {
   const [y, m, d] = iso.split('-').map(Number);
-  return new Date(y, m - 1, d).toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' });
+  // Espace insécable entre le jour et le mois : « 29 » ne reste jamais seul en fin de ligne
+  return new Date(y, m - 1, d).toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' }).replace(/(\d+) /, '$1\u00a0');
 };
 
 /** « 🎄 Plus que 12 jours avant l'échange » */
@@ -759,6 +765,120 @@ function renderEnter() {
 }
 
 // ---------------------------------------------------------------------------
+// Onglets en haut de la page : Mon tirage · Ma lettre · Sa lettre · Messages
+// ---------------------------------------------------------------------------
+
+/**
+ * Les onglets du moment. « Sa lettre » n'existe qu'après le tirage ; après la révélation,
+ * « Ma lettre » (qui ne sert plus) laisse la place à l'album souvenir.
+ */
+function tabList() {
+  const { drawn, revealed } = state.group;
+  return [
+    ['tirage', '🎁', 'Mon tirage'],
+    revealed ? ['album', '📸', 'Album'] : ['lettre', '✉️', 'Ma lettre'],
+    drawn ? ['salettre', '📜', 'Sa lettre'] : null,
+    ['messages', '💬', 'Messages'],
+  ].filter(Boolean);
+}
+
+/** Onglet demandé par l'adresse (#lettre…). Une discussion ouverte (#discussion) est dans les messages. */
+function tabFromHash() {
+  const h = decodeURIComponent(location.hash.slice(1));
+  if (h === 'discussion' || h === 'messagerie') return 'messages';
+  // Ancien lien vers l'album ou la lettre : on montre ce qui le remplace.
+  if (h === 'lettre' && state.group.revealed) return 'album';
+  if (h === 'album' && !state.group.revealed) return 'lettre';
+  return tabList().some(([id]) => id === h) ? h : null;
+}
+
+/** Adresse de la page avec l'onglet courant. keepSearch : garde ?ouvrir=… (pas encore traité). */
+const tabUrl = ({ keepSearch = false } = {}) => `${location.pathname}${keepSearch ? location.search : ''}${currentTab ? `#${currentTab}` : ''}`;
+
+function renderTabbar() {
+  const tabs = tabList().map(([id, icon, label]) => el('button', {
+    class: 'tab', type: 'button', role: 'tab', id: `tab-${id}`, 'data-tab': id,
+    'aria-controls': `panel-${id}`, 'aria-selected': 'false', tabindex: '-1', 'data-label': label,
+    onclick: () => selectTab(id),
+  },
+  el('span', { class: 'tab-icon', 'aria-hidden': 'true' }, icon),
+  el('span', { class: 'tab-label' }, label),
+  el('span', { class: 'tab-badge', 'aria-hidden': 'true', hidden: true })));
+  const list = el('div', { class: 'tabs', role: 'tablist', 'aria-label': 'Ma page de Père Noël secret' }, tabs);
+  // Flèches gauche/droite, Début/Fin : on passe d'un onglet à l'autre (comme dans une appli).
+  list.addEventListener('keydown', (e) => {
+    const i = tabs.indexOf(document.activeElement);
+    if (i < 0) return;
+    const next = { ArrowRight: i + 1, ArrowLeft: i - 1, Home: 0, End: tabs.length - 1 }[e.key];
+    if (next === undefined) return;
+    e.preventDefault();
+    const tab = tabs[(next + tabs.length) % tabs.length];
+    selectTab(tab.dataset.tab, { focus: true });
+  });
+  return el('nav', { class: 'tabbar', id: 'tabbar', 'aria-label': 'Sections de la page' }, list);
+}
+
+/** Un panneau d'onglet (caché tant que son onglet n'est pas choisi). */
+const tabPanel = (id, ...children) => el('div', {
+  class: 'tab-panel', role: 'tabpanel', id: `panel-${id}`, 'aria-labelledby': `tab-${id}`, tabindex: '-1', hidden: true,
+}, children);
+
+/**
+ * Affiche un onglet. url : l'adresse retient l'onglet (rechargement, retour arrière) ;
+ * focus : le focus va sur l'onglet (clavier) ; sinon la page remonte au début du panneau.
+ */
+function selectTab(id, { focus = false, url = true, scroll = true } = {}) {
+  const tabs = [...root.querySelectorAll('.tabbar [role="tab"]')];
+  if (!tabs.length) return;
+  if (!tabs.some((t) => t.dataset.tab === id)) id = 'tirage';
+  const changed = currentTab !== id;
+  currentTab = id;
+  for (const t of tabs) {
+    const on = t.dataset.tab === id;
+    t.setAttribute('aria-selected', String(on));
+    t.tabIndex = on ? 0 : -1;
+  }
+  for (const p of root.querySelectorAll('.tab-panel')) p.hidden = p.id !== `panel-${id}`;
+  if (id === 'lettre') document.getElementById('wishlist-input')?.grow?.();
+  // Pas pendant une discussion ouverte : son entrée d'historique (#discussion) sert au bouton « retour ».
+  if (url && !history.state?.chat && location.hash !== `#${id}`) history.replaceState(history.state, '', tabUrl({ keepSearch: true }));
+  if (focus) tabs.find((t) => t.dataset.tab === id)?.focus();
+  // Page descendue plus bas que les onglets : le nouveau panneau s'affiche depuis son début.
+  const anchor = document.getElementById('tab-anchor');
+  if (changed && scroll && anchor) {
+    const top = anchor.getBoundingClientRect().top + window.scrollY;
+    if (window.scrollY > top) window.scrollTo(0, top);
+  }
+}
+
+/** Pastilles des onglets : messages non lus, lettre encore à écrire. */
+function updateTabs() {
+  const set = (id, text, srText, cls) => {
+    const tab = document.getElementById(`tab-${id}`);
+    if (!tab) return;
+    const badge = tab.querySelector('.tab-badge');
+    badge.hidden = !text;
+    badge.textContent = text || '';
+    badge.className = `tab-badge${cls ? ` ${cls}` : ''}`;
+    tab.classList.toggle('has-badge', Boolean(text));
+    tab.setAttribute('aria-label', `${tab.dataset.label}${srText ? `, ${srText}` : ''}`);
+  };
+  const unread = chat ? chat.unreadTotal() : 0;
+  set('messages', unread ? String(unread) : '', unread ? `${unread} message${unread > 1 ? 's' : ''} non lu${unread > 1 ? 's' : ''}` : '', 'tab-badge-count');
+  set('lettre', letterNeedsFill() ? 'à écrire' : '', letterNeedsFill() ? 'lettre à écrire' : '', 'tab-badge-todo');
+}
+
+/** La lettre au Père Noël est encore vide (et il est encore temps de l'écrire). */
+const letterNeedsFill = () => !state.group.revealed && !String(state.me.wishlist || '').trim() && !exchangeReached();
+
+window.addEventListener('hashchange', () => {
+  // Adresse modifiée à la main, ou retour arrière : l'onglet suit.
+  if (!state?.authenticated || chat?.isOpen()) return;
+  const id = tabFromHash();
+  if (id && id !== currentTab) selectTab(id);
+});
+
+// ---------------------------------------------------------------------------
 // Page principale
 // ---------------------------------------------------------------------------
 
@@ -798,7 +918,25 @@ function renderMain() {
   lastInfoKey = null;
   const chatSection = el('div', { id: 'chat-section' });
 
+  // Onglet affiché : celui de l'adresse (#lettre…), sinon celui qu'on regardait, sinon « Mon tirage ».
+  const startTab = tabFromHash() || currentTab || 'tirage';
+  const logout = el('p', { class: 'center logout' },
+    el('button', {
+      class: 'btn btn-ghost btn-small', type: 'button',
+      onclick: async (e) => {
+        const btn = e.currentTarget;
+        if (!(await ask('Il faudra entrer ton code secret pour revenir sur cet appareil.', { title: 'Te déconnecter ?', confirmLabel: 'Me déconnecter' }))) return;
+        await forgetDeviceNotifications();
+        const ok = await withButton(btn, () => api('POST', `${base}/logout`, {}));
+        if (ok) { await load(); window.scrollTo(0, 0); }
+      },
+    }, 'Se déconnecter de cet appareil'),
+  );
+
   clear(root,
+    // Les onglets tout en haut, toujours visibles (ils restent collés en haut quand on descend).
+    el('div', { id: 'tab-anchor', 'aria-hidden': 'true' }),
+    renderTabbar(),
     el('header', { class: 'page-header' },
       // « Secret Santa » une seule fois : pas de surtitre si le groupe porte déjà ce nom.
       isBrandName(group.name) ? null : el('p', { class: 'eyebrow' }, 'Secret Santa'),
@@ -807,43 +945,38 @@ function renderMain() {
       countdown(),
     ),
     el('nav', { class: 'quickbar', id: 'quickbar', 'aria-label': 'Raccourcis', hidden: true }),
+    // Avertissements de sécurité : visibles quel que soit l'onglet.
     failedNotice(),
     createdNotice(),
-    howToCard,
     resetNotice(),
     el('div', { id: 'trace' }, revealTraceNotice()),
-    info,
-    group.revealed ? el('div', { id: 'album' }) : null,
-    // Après le tirage, la discussion passe avant ma liste : c'est là que tout se passe.
-    // Après la révélation, la liste de souhaits ne sert plus.
-    // Ma liste de souhaits juste sous l'étiquette cadeau, puis les discussions et les dates.
-    group.revealed ? null : wishlist,
-    chatSection,
-    el('div', { id: 'dates', 'data-dates-box': '' }, datesCard()),
-    el('div', { id: 'notif-card' }),
-    renderGroupCard(),
-    el('p', { class: 'center' },
-      el('button', {
-        class: 'btn btn-ghost btn-small', type: 'button',
-        onclick: async (e) => {
-          const btn = e.currentTarget;
-          if (!(await ask('Il faudra entrer ton code secret pour revenir sur cet appareil.', { title: 'Te déconnecter ?', confirmLabel: 'Me déconnecter' }))) return;
-          await forgetDeviceNotifications();
-          const ok = await withButton(btn, () => api('POST', `${base}/logout`, {}));
-          if (ok) { await load(); window.scrollTo(0, 0); }
-        },
-      }, 'Se déconnecter de cet appareil'),
-    ),
+    // 🎁 Mon tirage : à qui j'offre, où en est le cadeau, les dates, le principe et les infos pratiques.
+    tabPanel('tirage',
+      info,
+      group.drawn ? null : howToCard, // avant le tirage, le principe du jeu est en haut (ouvert)
+      el('div', { id: 'dates', 'data-dates-box': '' }, datesCard()),
+      group.drawn ? howToCard : null,
+      renderGroupCard(),
+      logout),
+    // ✉️ Ma lettre au Père Noël (après la révélation, elle ne sert plus : place à l'album).
+    group.revealed
+      ? tabPanel('album', el('div', { id: 'album' }))
+      : tabPanel('lettre', wishlist),
+    // 📜 Sa lettre : la lettre au Père Noël de la personne à qui j'offre (après le tirage).
+    group.drawn ? tabPanel('salettre', el('div', { id: 'their-letter-box' })) : null,
+    // 💬 Messages : les deux discussions anonymes, et les notifications.
+    tabPanel('messages', chatSection, el('div', { id: 'notif-card' })),
   );
+  selectTab(startTab, { scroll: false });
   // Arrivée depuis une notification de message alors que le cadeau n'a jamais été ouvert
   // (ici ou sur cet appareil) : le cadeau d'abord ; la discussion s'ouvre juste après.
   renderInfo();
-  // Plein écran à la première connexion : d'abord la liste de souhaits, ensuite le cadeau à ouvrir.
+  // Plein écran à la première connexion : d'abord la lettre au Père Noël, ensuite le cadeau à ouvrir.
   // On relit l'état à jour : le tirage a pu avoir lieu pendant les écrans d'accueil.
   const giftPending = () => state.group.drawn && !isUnwrapped() && !giftOverlayDismissed && state.recipient;
   const openGiftIfPending = () => { if (giftPending()) openGiftOverlay(state.recipient.name); };
   if (codeCreatedNotice && !onboardingDone && !group.revealed) {
-    // Toute première connexion : calendrier, puis liste de souhaits, puis le cadeau (si le tirage a eu lieu).
+    // Toute première connexion : calendrier, puis lettre au Père Noël, puis le cadeau (si le tirage a eu lieu).
     onboardingDone = true;
     openDatesOverlay(() => {
       if (!wishlistPromptDone && !state.me.wishlist && !exchangeReached()) openWishlistOverlay(openGiftIfPending);
@@ -853,19 +986,22 @@ function renderMain() {
   if (group.drawn && !isUnwrapped()) {
     // Les discussions montrent le prénom : elles apparaissent une fois le cadeau ouvert.
     chat = null;
+    chatSection.append(chatPlaceholder(true));
   } else if (group.drawn) {
     chat = createChat(group.drawnAt);
     chatSection.append(chat.element);
     chat.loadAll();
-    // Arrivée depuis une notification : ouvre directement la bonne discussion.
+    // Arrivée depuis une notification : ouvre directement la bonne discussion (onglet Messagerie).
     const params = new URLSearchParams(location.search);
     const target = params.get('ouvrir');
     if (target === 'pere-noel' || target === 'destinataire') {
-      history.replaceState(history.state, '', location.pathname);
+      currentTab = 'messages';
+      history.replaceState(history.state, '', tabUrl());
       chat.openConv(target === 'pere-noel' ? 'santa' : 'recipient');
     }
   } else {
     chat = null;
+    chatSection.append(chatPlaceholder(false));
   }
   renderNotifCard();
   if (group.revealed) renderAlbum();
@@ -1076,22 +1212,23 @@ async function renderNotifCard() {
 
 function wishlistPillText() {
   const d = state.group.wishlistDeadline;
-  if (!d) return '📝 Remplis ta liste de souhaits';
+  if (!d) return '✉️ Écris ta lettre au Père Noël';
   const n = daysUntil(d);
-  if (n < 0) return '📝 Ta liste est en retard : remplis-la vite !';
-  if (n === 0) return "📝 Remplis ta liste aujourd'hui (dernier jour)";
-  return `📝 Remplis ta liste avant ${n === 1 ? 'demain soir' : `le ${shortDate(d)}`}`;
+  if (n < 0) return '✉️ Ta lettre est en retard : écris-la vite !';
+  if (n === 0) return "✉️ Écris ta lettre aujourd'hui (dernier jour)";
+  return `✉️ Écris ta lettre au Père Noël avant ${n === 1 ? 'demain soir' : `le ${shortDate(d)}`}`;
 }
 
-/** Raccourcis en haut de page : nouveaux messages, liste à remplir. */
+/** Raccourcis en haut de page : nouveaux messages, lettre à écrire. */
 function updateQuickbar() {
+  updateTabs();
   const bar = document.getElementById('quickbar');
   if (!bar) return;
   const unread = chat ? chat.unreadTotal() : 0;
   const links = [];
   if (unread) {
     links.push(el('a', {
-      href: '#chat-section', class: 'quick quick-hot',
+      href: '#messages', class: 'quick quick-hot',
       onclick: (e) => {
         e.preventDefault();
         chat.openUnread();
@@ -1102,10 +1239,10 @@ function updateQuickbar() {
   if (!state.group.revealed && !exchangeReached() && !state.me.wishlist && !(wish && wish.value.trim())) {
     const late = state.group.wishlistDeadline && daysUntil(state.group.wishlistDeadline) < 0;
     links.push(el('a', {
-      href: '#wishlist-card', class: `quick${late ? ' quick-hot' : ''}`,
+      href: '#lettre', class: `quick${late ? ' quick-hot' : ''}`,
       onclick: (e) => {
         e.preventDefault();
-        document.getElementById('wishlist-card')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        selectTab('lettre');
         wish?.focus({ preventScroll: true });
       },
     }, wishlistPillText()));
@@ -1133,10 +1270,13 @@ function renderInfo() {
   lastInfoKey = key;
   const trace = document.getElementById('trace');
   if (trace) clear(trace, revealTraceNotice());
+  const letterBox = document.getElementById('their-letter-box');
   // Mémorise l'élément qui avait le focus pour le rendre après avoir redessiné.
-  const focusKey = (info.contains(document.activeElement) ? document.activeElement.dataset.focusKey : null) || pendingFocusKey;
+  const inBoxes = info.contains(document.activeElement) || letterBox?.contains(document.activeElement);
+  const focusKey = (inBoxes ? document.activeElement.dataset.focusKey : null) || pendingFocusKey;
   pendingFocusKey = null;
   const parts = [];
+  let letterParts = [];
 
   if (group.revealed && santaName) {
     parts.push(el('section', { class: 'card reveal center' },
@@ -1152,11 +1292,19 @@ function renderInfo() {
     parts.push(el('section', { class: 'card waiting center' },
       el('div', { class: 'hero-icon', 'aria-hidden': 'true' }, '⏳'),
       el('h2', {}, "Le tirage n'a pas encore eu lieu"),
-      el('p', {}, "Reviens ici un peu plus tard : tu découvriras à qui tu offres un cadeau. En attendant, remplis ta liste de souhaits pour aider ton futur Père Noël !"),
+      el('p', {}, "Reviens ici un peu plus tard : tu découvriras à qui tu offres un cadeau. En attendant, écris ta lettre au Père Noël pour aider ton futur Père Noël secret !"),
     ));
   } else if (recipient && !isUnwrapped()) {
     // Première visite après le tirage : un cadeau à ouvrir (le prénom n'apparaît nulle part avant).
     parts.push(mysteryGiftCard(recipient.name));
+    letterParts = [el('section', { class: 'card letter-soon center' },
+      el('div', { class: 'hero-icon', 'aria-hidden': 'true' }, '📜'),
+      el('h2', {}, 'Sa lettre au Père Noël'),
+      el('p', {}, 'Ouvre d’abord ton cadeau pour découvrir à qui tu offres : tu pourras ensuite lire sa lettre au Père Noël ici.'),
+      el('button', {
+        class: 'btn btn-primary', type: 'button', 'data-focus-key': 'letter-open-gift',
+        onclick: () => { selectTab('tirage'); if (state.recipient) openGiftOverlay(state.recipient.name); },
+      }, '🎁 Ouvrir mon cadeau'))];
   } else if (recipient) {
     const revealed = group.revealed;
     // L'étiquette cadeau : le moment le plus important de la page.
@@ -1171,19 +1319,33 @@ function renderInfo() {
       el('p', { class: 'hush' }, revealed
         ? `🎉 ${recipient.name} sait maintenant que c'était toi !`
         : `🤫 Chut ! ${recipient.name} ne sait pas que c'est toi.`),
+      el('button', {
+        class: 'btn btn-small tag-letter', type: 'button', 'data-focus-key': 'read-letter',
+        onclick: () => selectTab('salettre'),
+      }, recipient.wishlist ? `📜 Lire sa lettre au Père Noël` : '📜 Sa lettre au Père Noël'),
     ));
-    parts.push(el('section', { class: 'card' },
-      el('h2', {}, `🎁 Ce qui ferait plaisir à ${recipient.name}`),
+    // Où en est le cadeau (le suivi reste dans « Mon tirage », sous l'étiquette).
+    if (!revealed) parts.push(el('section', { class: 'card gift-card' }, renderGiftProgress(recipient.name)));
+    // Sa lettre au Père Noël (signée de son prénom : on sait déjà à qui on offre).
+    letterParts = [el('section', { class: 'card letter-read', id: 'their-letter', 'aria-labelledby': 'their-letter-title' },
+      el('p', { class: 'eyebrow' }, revealed ? 'La lettre de la personne à qui tu offrais' : 'La lettre de la personne à qui tu offres'),
+      el('h2', { id: 'their-letter-title' }, `📜 La lettre de ${recipient.name}`),
       recipient.wishlist
-        ? el('p', { class: 'wishlist-text' }, linkify(recipient.wishlist))
-        : el('p', { class: 'muted' }, revealed
-          ? `${recipient.name} n'avait pas rempli sa liste.`
-          : `${recipient.name} n'a pas encore rempli sa liste. Pose-lui discrètement des questions dans la discussion !`),
-      revealed ? null : renderGiftProgress(recipient.name),
-    ));
+        ? letterSheet(letterText(recipient.wishlist), recipient.name, { read: true })
+        : el('div', { class: 'letter-missing' },
+          el('p', { class: 'muted' }, revealed
+            ? `${recipient.name} n'avait pas écrit sa lettre.`
+            : `${recipient.name} n'a pas encore écrit sa lettre. Pose-lui discrètement des questions dans la discussion !`)),
+      revealed ? null : el('div', { class: 'actions letter-read-actions' },
+        el('button', {
+          class: 'btn btn-small', type: 'button', 'data-focus-key': 'write-recipient',
+          onclick: () => chat?.openConv('recipient'),
+        }, `💬 Écrire à ${recipient.name} (anonyme)`)),
+    )];
   }
   clear(info, parts);
-  if (focusKey) info.querySelector(`[data-focus-key="${focusKey}"]`)?.focus();
+  if (letterBox) clear(letterBox, letterParts);
+  if (focusKey) (info.querySelector(`[data-focus-key="${focusKey}"]`) || letterBox?.querySelector(`[data-focus-key="${focusKey}"]`))?.focus();
   updateQuickbar();
 }
 
@@ -1209,6 +1371,7 @@ function renderGiftProgress(recipientName) {
   return el('div', { class: 'gift-progress' },
     el('h3', {}, `Et ce cadeau pour ${recipientName}, ça avance ?`),
     el('div', { class: 'steps-row' }, buttons),
+    current === 'wrapped' ? el('p', { class: 'mission-done' }, '🎉 Mission accomplie, Père Noël ! Le cadeau est prêt pour le grand jour.') : null,
   );
 }
 
@@ -1272,17 +1435,87 @@ function renderRevealAll() {
   );
 }
 
+// ---------------------------------------------------------------------------
+// La lettre au Père Noël (anciennement « liste de souhaits », même champ côté serveur)
+// ---------------------------------------------------------------------------
+
+/** Rubriques proposées pour aider à écrire la lettre (insérées dans le texte). */
+const RUBRICS = [
+  ['🎁', 'Mes idées cadeaux'],
+  ['❤️', 'Mes goûts'],
+  ['🚫', 'À éviter'],
+  ['📏', 'Mes tailles'],
+  ['😇', 'Mes bonnes actions de l’année'],
+];
+// Indications discrètes (les rubriques ci-dessous les ajoutent dans la lettre d'un appui).
+const LETTER_PLACEHOLDER = [
+  'Cette année, j’ai été très sage…',
+  '🎁 Mes idées cadeaux : un livre, des bougies…',
+  '❤️ Mes goûts : le bleu, la plage, le monoï…',
+  '🚫 À éviter : le chocolat…',
+  '📏 Mes tailles : M, pointure 38…',
+].join('\n');
+
+/**
+ * Une feuille de lettre : houx, timbre et cachet de la poste, « Cher Père Noël, », le texte,
+ * la signature « Je t'embrasse, <prénom> » et un cachet de cire.
+ * signName : le prénom de celui ou celle qui écrit la lettre.
+ */
+function letterSheet(body, signName, { compact = false, read = false } = {}) {
+  return el('div', { class: `letter-paper${compact ? ' compact' : ''}${read ? ' read' : ''}` },
+    el('span', { class: 'letter-holly', 'aria-hidden': 'true' }),
+    el('span', { class: 'letter-stamp', 'aria-hidden': 'true' }, el('span', { class: 'letter-stamp-art' })),
+    el('span', { class: 'letter-postmark', 'aria-hidden': 'true' }, el('span', {}, 'Pôle'), el('span', {}, 'Nord'), el('span', { class: 'pm-star' }, '★')),
+    el('p', { class: 'letter-greeting' }, 'Cher Père Noël,'),
+    body,
+    el('div', { class: 'letter-foot' },
+      el('span', { class: 'letter-seal', 'aria-hidden': 'true' }, el('span', {}, '✦')),
+      el('p', { class: 'letter-sign' }, 'Je t’embrasse,', el('span', { class: 'letter-name' }, signName))),
+  );
+}
+
+/** Le texte d'une lettre, en lecture (les liens sont cliquables). */
+const letterText = (text) => el('div', { class: 'letter-text wishlist-text' }, linkify(text));
+
+/** La date limite de la lettre, en clair (« plus que 11 jours », « dernier jour », « date dépassée »). */
+function letterDeadline() {
+  const d = state.group.wishlistDeadline;
+  if (!d || exchangeReached()) return null;
+  const n = daysUntil(d);
+  const when = n < 0 ? 'date dépassée : écris-la vite !' : n === 0 ? "c'est aujourd'hui, dernier jour !" : n === 1 ? 'plus que 1 jour' : `plus que ${n} jours`;
+  return el('p', { class: `letter-deadline${n <= 2 ? ' soon' : ''}` },
+    el('span', { 'aria-hidden': 'true' }, '📅 '),
+    `À poster avant le ${shortDate(d)}\u00a0· `,
+    el('span', { class: 'letter-deadline-when' }, when));
+}
+
 function renderWishlistCard(initial, draft = null) {
+  const myName = state.me.name;
   const area = el('textarea', {
-    rows: '5', maxlength: '3000', value: draft ?? initial, id: 'wishlist-input',
-    placeholder: 'Des idées de cadeaux, tes goûts, ta taille, ce que tu n\'aimes pas…',
-    'aria-label': 'Ma liste de souhaits',
+    rows: '7', maxlength: '3000', value: draft ?? initial, id: 'wishlist-input', class: 'letter-body',
+    placeholder: LETTER_PLACEHOLDER,
+    'aria-label': 'Ma lettre au Père Noël', 'aria-describedby': 'letter-help',
   });
-  const status = el('span', { class: 'muted small' });
-  const button = el('button', { class: 'btn btn-primary', type: 'submit' }, 'Enregistrer');
-  const todo = el('span', { class: 'todo-badge' }, '✍️ À remplir');
+  const status = el('span', { class: 'muted small', role: 'status' });
+  const button = el('button', { class: 'btn btn-primary', type: 'submit' }, '💾 Enregistrer ma lettre');
+  const todo = el('span', { class: 'todo-badge' }, '✍️ À écrire');
+  // Aperçu : la lettre telle que la lira le Père Noël secret.
+  const preview = el('div', { class: 'letter-preview', hidden: true });
+  const previewBtn = el('button', { class: 'btn btn-ghost btn-small', type: 'button', 'aria-pressed': 'false' }, '👀 Aperçu');
+  const editBox = el('div', { class: 'letter-edit' }, area);
+  const chips = RUBRICS.map(([icon, label]) => el('button', {
+    class: 'rubric', type: 'button', 'data-rubric': label,
+    onclick: () => addRubric(icon, label),
+  }, el('span', { 'aria-hidden': 'true' }, icon), el('span', {}, label), el('span', { class: 'rubric-done', 'aria-hidden': 'true' }, '✓'), el('span', { class: 'sr-only rubric-sr' })));
   let saved = initial;
   let card = null;
+  const updateChips = () => {
+    for (const chip of chips) {
+      const used = area.value.includes(chip.dataset.rubric);
+      chip.classList.toggle('used', used);
+      chip.querySelector('.rubric-sr').textContent = used ? ' (déjà dans ta lettre)' : '';
+    }
+  };
   const updateStatus = () => {
     const dirty = area.value !== saved;
     area.dataset.dirty = dirty ? '1' : '';
@@ -1290,22 +1523,71 @@ function renderWishlistCard(initial, draft = null) {
     // Le brouillon est gardé sur l'appareil jusqu'à ce qu'il soit enregistré.
     if (dirty) storage.set(draftKey(), area.value);
     else forgetDraft();
-    // Tant que la liste n'est pas enregistrée, la carte brille pour qu'on la remarque.
+    // Tant que la lettre n'est pas enregistrée, la carte brille pour qu'on la remarque.
     const needsFill = !String(saved || '').trim() && !exchangeReached();
     card?.classList.toggle('needs-fill', needsFill);
     todo.hidden = !needsFill;
+    updateChips();
   };
+  /** Ajoute une rubrique à la fin de la lettre (ou y emmène le curseur si elle y est déjà). */
+  function addRubric(icon, label) {
+    if (!preview.hidden) togglePreview(false);
+    const at = area.value.indexOf(label);
+    if (at >= 0) {
+      const end = area.value.indexOf('\n', at);
+      const pos = end < 0 ? area.value.length : end;
+      area.focus();
+      area.setSelectionRange(pos, pos);
+      return;
+    }
+    const text = area.value.replace(/\s+$/, '');
+    const line = `${icon} ${label} : `;
+    area.value = text ? `${text}\n\n${line}` : line;
+    area.dispatchEvent(new Event('input'));
+    area.focus();
+    area.setSelectionRange(area.value.length, area.value.length);
+    area.scrollTop = area.scrollHeight;
+  }
+  function togglePreview(show) {
+    preview.hidden = !show;
+    editBox.hidden = show;
+    if (!show) area.grow();
+    previewBtn.setAttribute('aria-pressed', String(show));
+    previewBtn.textContent = show ? '✏️ Continuer d’écrire' : '👀 Aperçu';
+    if (show) {
+      clear(preview, area.value.trim()
+        ? letterText(area.value)
+        : el('p', { class: 'letter-text letter-empty-text' }, 'Ta lettre est encore vide…'));
+    }
+  }
+  previewBtn.addEventListener('click', () => togglePreview(preview.hidden));
+  // La feuille s'allonge avec le texte (comme une vraie lettre), sans barre de défilement.
+  area.grow = () => {
+    if (!area.offsetParent) return; // onglet caché : recalculé à l'affichage
+    const keep = window.scrollY;
+    area.style.height = 'auto';
+    area.style.height = `${area.scrollHeight + 4}px`;
+    window.scrollTo(0, keep);
+  };
+  area.addEventListener('input', () => area.grow());
   area.addEventListener('input', updateStatus);
   updateStatus();
-  // Rafraîchissement automatique : si la liste a changé ailleurs (autre appareil) et
+  // Rafraîchissement automatique : si la lettre a changé ailleurs (autre appareil) et
   // qu'on n'est pas en train de la modifier ici, on affiche la version enregistrée.
   area.syncSaved = (value) => {
     if (area.dataset.dirty === '1' || value === saved) return;
     saved = value;
     area.value = value;
     updateStatus();
+    area.grow();
+    if (!preview.hidden) togglePreview(true);
   };
-  const form = el('form', { novalidate: true }, area, el('div', { class: 'actions' }, button, status));
+  const form = el('form', { novalidate: true, class: 'letter-form' },
+    letterSheet([editBox, preview], myName),
+    el('div', { class: 'rubrics' },
+      el('p', { class: 'rubrics-title', id: 'rubrics-title' }, '💡 Besoin d’idées ? Ajoute une rubrique :'),
+      el('div', { class: 'rubric-list', role: 'group', 'aria-labelledby': 'rubrics-title' }, chips)),
+    el('div', { class: 'actions' }, button, previewBtn, status));
   form.addEventListener('submit', async (e) => {
     e.preventDefault();
     const result = await withButton(button, () => api('PUT', `${base}/wishlist`, { wishlist: area.value }));
@@ -1313,17 +1595,18 @@ function renderWishlistCard(initial, draft = null) {
     saved = result.wishlist;
     if (area.value.trim() === result.wishlist) area.value = result.wishlist;
     updateStatus();
-    // Le calendrier et les raccourcis suivent tout de suite (date limite plus « à remplir »).
+    // Le calendrier, les onglets et les raccourcis suivent tout de suite (date limite plus « à écrire »).
     state.me.wishlist = result.wishlist;
     redrawDates();
     updateQuickbar();
-    toast('Liste de souhaits enregistrée !', 'success');
+    if (!preview.hidden) togglePreview(true);
+    toast('Lettre au Père Noël enregistrée ! 🎅', 'success');
   });
   area.addEventListener('input', () => updateQuickbar());
-  card = el('section', { class: 'card', id: 'wishlist-card' },
-    el('h2', {}, '📝 Ma liste de souhaits', todo),
-    el('p', { class: 'muted small' }, 'Ton Père Noël secret la verra.',
-      state.group.wishlistDeadline && !exchangeReached() ? ` À remplir avant le ${shortDate(state.group.wishlistDeadline)}.` : ''),
+  card = el('section', { class: 'card letter-card', id: 'wishlist-card', 'aria-labelledby': 'letter-title' },
+    el('h2', { id: 'letter-title' }, '✉️ Ma lettre au Père Noël', todo),
+    el('p', { class: 'muted small', id: 'letter-help' }, 'Ton Père Noël secret la lira pour te trouver le cadeau parfait : tes envies, tes goûts, ta taille, ce que tu n’aimes pas…'),
+    letterDeadline(),
     form,
   );
   updateStatus();
@@ -1346,6 +1629,20 @@ function renderGroupCard() {
 // ---------------------------------------------------------------------------
 // Messagerie anonyme
 // ---------------------------------------------------------------------------
+
+/** Onglet Messagerie avant que les discussions n'existent (pas de tirage, ou cadeau pas encore ouvert). */
+function chatPlaceholder(giftWaiting) {
+  return el('section', { class: 'card chat-soon center' },
+    el('div', { class: 'hero-icon', 'aria-hidden': 'true' }, giftWaiting ? '🎁' : '💬'),
+    el('h2', {}, '💬 Messagerie'),
+    giftWaiting
+      ? [
+        el('p', {}, 'Ouvre d’abord ton cadeau pour découvrir à qui tu offres : tes deux discussions anonymes apparaîtront ici.'),
+        el('button', { class: 'btn btn-primary', type: 'button', onclick: () => { selectTab('tirage'); if (state.recipient) openGiftOverlay(state.recipient.name); } }, '🎁 Ouvrir mon cadeau'),
+      ]
+      : el('p', {}, 'Après le tirage au sort, tu auras ici deux discussions anonymes : une avec la personne à qui tu offres un cadeau (elle ne saura pas que c’est toi), et une avec ton Père Noël secret.'),
+  );
+}
 
 function createChat(drawnAt) {
   const messages = { recipient: [], santa: [] };
@@ -1602,6 +1899,8 @@ function createChat(drawnAt) {
   function openConv(conv, { push = true } = {}) {
     const previous = open;
     if (previous) drafts[previous] = input.value;
+    // La discussion s'ouvre par-dessus l'onglet Messagerie (on y revient en la fermant).
+    selectTab('messages', { scroll: false });
     open = conv;
     screen.hidden = false;
     root.inert = true;
@@ -1698,6 +1997,16 @@ function createChat(drawnAt) {
       openConv(conv);
     });
     document.body.append(banner);
+    // Sous la barre d'onglets (qui reste visible), là où elle se trouve à l'écran.
+    // (La barre bouge un peu quand on fait défiler la page : le bandeau suit.)
+    const place = () => {
+      if (!banner.isConnected) { window.removeEventListener('scroll', place); return; }
+      const bar = document.getElementById('tabbar');
+      banner.style.top = bar && !document.body.classList.contains('chat-open')
+        ? `${Math.max(10, Math.round(bar.getBoundingClientRect().bottom) + 8)}px` : '';
+    };
+    place();
+    window.addEventListener('scroll', place, { passive: true });
     try { navigator.vibrate?.([120, 60, 120]); } catch { /* pas de vibration */ }
     // Disparaît seule après 12 s, sauf tant que la souris est dessus ou que le focus y est.
     const arm = () => { clearTimeout(alertTimer); alertTimer = setTimeout(close, 12000); };
@@ -1774,7 +2083,7 @@ function createChat(drawnAt) {
         open = null;
         root.inert = false;
         document.body.classList.remove('chat-open');
-        if (history.state?.chat) history.replaceState(null, '', location.pathname);
+        if (history.state?.chat) history.replaceState(null, '', tabUrl());
       }
       screen.remove();
       announcer.remove();

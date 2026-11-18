@@ -5,11 +5,12 @@ Application web de **Père Noël secret** (Secret Santa) avec **messagerie anony
 - l'organisateur crée un groupe, ajoute les participants et lance le tirage au sort ;
 - l'organisateur partage **un seul lien** dans la conversation du groupe (Messenger, WhatsApp…) : chacun appuie sur son prénom, choisit un **code secret** à la première visite, puis découvre à qui il offre un cadeau. Des liens individuels restent disponibles ;
 - chacun peut **discuter anonymement** avec la personne à qui il offre (qui ne sait pas qui lui écrit) et avec son propre Père Noël secret (qu'il ne connaît pas) ;
-- listes de souhaits (les liens vers des articles en ligne sont cliquables), budget, date, exclusions (ex. : un couple ne se tire pas mutuellement) ;
+- **page participant en onglets**, comme une petite appli (barre d'onglets collée en haut, au doigt ou aux flèches du clavier, l'onglet ouvert est gardé dans l'adresse) : **🎁 Mon tirage** (à qui j'offre, où en est le cadeau, le calendrier des dates, le principe du jeu, les infos pratiques), **✉️ Ma lettre** (ma lettre au Père Noël, avec une pastille « à écrire » qui brille tant qu'elle est vide), **📜 Sa lettre** (après le tirage : la lettre de la personne à qui j'offre), **💬 Messages** (les deux discussions anonymes et les notifications, avec une pastille du nombre de messages non lus). Après la révélation, l'onglet « Ma lettre » laisse la place à **📸 Album** ;
+- **lettre au Père Noël** (à la place d'une simple liste de souhaits) : on l'écrit sur une vraie feuille de lettre (papier ancien, houx, timbre, cachet de cire ; « Cher Père Noël, … Je t'embrasse, *prénom* »), avec des rubriques à ajouter d'un appui (idées cadeaux, goûts, à éviter, tailles, bonnes actions de l'année) et un aperçu. Le Père Noël secret la lit dans « Sa lettre », signée du prénom de la personne à qui il offre. Les liens vers des articles en ligne sont cliquables. Tant qu'elle est vide, l'onglet « Ma lettre » affiche une pastille « à écrire » qui brille. Budget, date, exclusions (ex. : un couple ne se tire pas mutuellement) ;
 - **suivi du cadeau** : chacun indique où il en est (je cherche, idée trouvée, acheté, emballé). L'organisateur voit le total des cadeaux prêts ;
 - **grande révélation** : à la main, ou automatiquement le lendemain de l'échange (dans le fuseau horaire de l'organisateur, par exemple Tahiti), pour ne pas gâcher la surprise de la soirée.
 - **album souvenir** après la révélation : chacun ajoute la photo du cadeau reçu (réduite et débarrassée de ses métadonnées, GPS compris, sur le téléphone) et un petit mot. Chaque carte se télécharge (photo + mot) ; « Tout télécharger » donne un ZIP avec les photos, les mots, une page d'album et les discussions (les siennes pour un participant, toutes avec les prénoms pour l'organisateur) ;
-- **compte à rebours** jusqu'à l'échange, **date limite** pour remplir sa liste de souhaits (pastille « Liste vide » et rappel à copier pour l'organisateur), **conseil anti-trahison** à la première discussion. Chacun découvre qui était son Père Noël, puis ouvre les cadeaux un par un pour voir qui offrait à qui.
+- **compte à rebours** jusqu'à l'échange, **date limite** pour écrire sa lettre au Père Noël (pastille « Liste vide » et rappel à copier pour l'organisateur), **conseil anti-trahison** à la première discussion. Chacun découvre qui était son Père Noël, puis ouvre les cadeaux un par un pour voir qui offrait à qui.
 
 ## Garanties d'anonymat
 
@@ -135,7 +136,7 @@ Il faut **une seule instance** : la base SQLite est un fichier local, et le serv
 
 ## Créer le groupe en une commande
 
-Le fichier `groupe.json` contient déjà la liste des participants (Chloe, Cousine Salomé, Dany, Jason, Jessy, Kalea, Kea, Miti, Reva, Salomé J, Salomé M, Veldea, Welma), l'échange le 19 décembre 2026 et la date limite des listes le 29 novembre. Une fois le site en ligne :
+Le fichier `groupe.json` contient déjà la liste des participants (Chloe, Cousine Salomé, Dany, Jason, Jessy, Kalea, Kea, Miti, Reva, Salomé J, Salomé M, Veldea, Welma), l'échange le 19 décembre 2026 et la date limite des lettres au Père Noël le 29 novembre. Une fois le site en ligne :
 
 ```bash
 CODE_ORGANISATEUR=123456 npm run creer-groupe -- https://adresse-du-site
@@ -162,4 +163,4 @@ test/        tests automatiques (node --test)
 - **Limites anti-abus** : 20 créations de groupe par heure et par adresse IP, 30 tentatives de connexion par 10 minutes et par adresse IP, et 10 sessions au maximum par participant.
 - **Sécurité** : jetons aléatoires de 144 bits dans les liens, jeton organisateur stocké haché, cookies de session `HttpOnly` + `SameSite=Lax` (+ `Secure` en HTTPS), API exigeant du JSON (protection CSRF), Content-Security-Policy stricte, `Referrer-Policy: no-referrer` pour que les liens secrets ne fuient pas, tout le texte affiché via `textContent` (pas d'injection HTML possible).
 - **Messagerie** : rafraîchissement automatique toutes les 4 secondes quand la page est visible.
-- **Données personnelles** : uniquement des prénoms, listes de souhaits et messages. L'organisateur peut tout supprimer définitivement (bouton « Supprimer le groupe »). L'annulation du tirage efface toutes les conversations.
+- **Données personnelles** : uniquement des prénoms, lettres au Père Noël et messages. L'organisateur peut tout supprimer définitivement (bouton « Supprimer le groupe »). L'annulation du tirage efface toutes les conversations.
