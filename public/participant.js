@@ -438,7 +438,10 @@ function openWishlistOverlay(onDone) {
     error,
     el('div', { class: 'wish-actions' }, save, later),
   );
+  // Toujours un moyen de sortir, même quand la lettre dépasse l'écran du téléphone.
+  const closeX = el('button', { class: 'wish-close', type: 'button', 'aria-label': 'Fermer et remplir plus tard' }, '✕');
   const panel = el('div', { class: 'wish-modal card' },
+    closeX,
     el('p', { class: 'eyebrow' }, `Bienvenue ${me.name} !`),
     el('h2', { id: 'wish-title' }, '✉️ Ta lettre au Père Noël'),
     el('p', { id: 'wish-first-help' }, 'Commence par ça : ton Père Noël secret la lira pour te trouver le cadeau parfait. Raconte-lui tes envies, tes goûts, ta taille, ce que tu n’aimes pas… Tu pourras la modifier quand tu veux, dans l’onglet « Ma lettre ».'),
@@ -469,6 +472,7 @@ function openWishlistOverlay(onDone) {
     if (e.key === 'Escape' && !document.querySelector('dialog[open]')) { keepDraft(); close(); }
   };
   later.addEventListener('click', () => { keepDraft(); close(); });
+  closeX.addEventListener('click', () => { keepDraft(); close(); });
   document.addEventListener('keydown', onKey);
   form.addEventListener('submit', async (e) => {
     e.preventDefault();
