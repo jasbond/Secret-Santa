@@ -844,6 +844,7 @@ function selectTab(id, { focus = false, url = true, scroll = true } = {}) {
   }
   for (const p of root.querySelectorAll('.tab-panel')) p.hidden = p.id !== `panel-${id}`;
   if (id === 'lettre') document.getElementById('wishlist-input')?.grow?.();
+  if (changed) updateQuickbar(); // le rappel « Écris ta lettre » dépend de l'onglet
   // Pas pendant une discussion ouverte : son entrée d'historique (#discussion) sert au bouton « retour ».
   if (url && !history.state?.chat && location.hash !== `#${id}`) history.replaceState(history.state, '', tabUrl({ keepSearch: true }));
   if (focus) tabs.find((t) => t.dataset.tab === id)?.focus();
@@ -1240,7 +1241,9 @@ function updateQuickbar() {
     }, `💬 ${unread} nouveau${unread > 1 ? 'x' : ''} message${unread > 1 ? 's' : ''}`));
   }
   const wish = document.getElementById('wishlist-input');
-  if (!state.group.revealed && !exchangeReached() && !state.me.wishlist && !(wish && wish.value.trim())) {
+  // Pas sur « Sa lettre » (c'est la lettre de quelqu'un d'autre) ni sur « Ma lettre » (on y est déjà).
+  const letterTab = currentTab === 'salettre' || currentTab === 'lettre';
+  if (!letterTab && !state.group.revealed && !exchangeReached() && !state.me.wishlist && !(wish && wish.value.trim())) {
     const late = state.group.wishlistDeadline && daysUntil(state.group.wishlistDeadline) < 0;
     links.push(el('a', {
       href: '#lettre', class: `quick${late ? ' quick-hot' : ''}`,
