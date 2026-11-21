@@ -85,9 +85,9 @@ Tout se fait dans le navigateur, sans carte bancaire ni ligne de commande. **Ren
 
 1. Aller sur https://render.com et cliquer sur **Get Started** (ou **Sign In**), puis **GitHub**. Autoriser Render à voir le dépôt `jasbond/Secret-Santa`.
 2. Dans le tableau de bord : **New +** → **Blueprint**.
-3. Choisir le dépôt **jasbond/Secret-Santa**, branche **main**. Render lit le fichier `render.yaml` : un service web gratuit (*Free*) nommé `pere-noel-secret`.
+3. Choisir le dépôt **jasbond/Secret-Santa**, branche **main**. Render lit le fichier `render.yaml` : un service web gratuit (*Free*) nommé `secret-santa`.
 4. Render demande deux valeurs : coller l'adresse Turso dans `TURSO_DATABASE_URL` et le jeton dans `TURSO_AUTH_TOKEN`.
-5. Cliquer sur **Deploy Blueprint** (ou **Apply**). La première mise en ligne prend quelques minutes. Quand le service affiche **Live**, son adresse apparaît en haut de la page (du type `https://pere-noel-secret.onrender.com`).
+5. Cliquer sur **Deploy Blueprint** (ou **Apply**). La première mise en ligne prend quelques minutes. Quand le service affiche **Live**, son adresse apparaît en haut de la page (du type `https://secret-santa.onrender.com`).
 
 **3. Créer le groupe**
 

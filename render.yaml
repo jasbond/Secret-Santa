@@ -3,7 +3,7 @@
 # Offre gratuite : pas de disque persistant, les données sont donc chez Turso.
 services:
   - type: web
-    name: pere-noel-secret
+    name: secret-santa
     runtime: docker
     plan: free
     region: oregon
