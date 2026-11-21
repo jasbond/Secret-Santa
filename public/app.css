@@ -1659,3 +1659,43 @@ textarea.letter-body:focus { border: 0; box-shadow: 0 0 0 2px rgba(185, 130, 28,
    fenêtre, pour ne jamais cacher ses boutons du bas (« Remplir plus tard »…). */
 body.gift-open .toast { top: calc(12px + env(safe-area-inset-top, 0px)); bottom: auto; transform: translate(-50%, -20px); z-index: 60; }
 body.gift-open .toast.show { transform: translate(-50%, 0); }
+
+/* ---------- Connexions suivantes : « Où en est le cadeau ? » en plein écran ---------- */
+.status-overlay { place-items: start center; }
+.status-overlay > .status-modal { margin: auto 0; }
+.status-modal {
+  width: 100%; max-width: 480px; text-align: center;
+  border: 1.5px solid var(--gold-bright); box-shadow: 0 30px 80px -24px rgba(0, 0, 0, 0.65);
+}
+@media (prefers-reduced-motion: no-preference) { .status-modal { animation: wish-in 0.45s cubic-bezier(0.2, 1.1, 0.4, 1); } }
+.status-modal .eyebrow { color: var(--gold); margin: 0 0 4px; }
+.status-modal h2 { margin: 0 0 8px; }
+.status-modal h2:focus { outline: none; }
+.status-choices { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; margin: 18px 0 12px; }
+.status-choice {
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px;
+  min-height: 96px; padding: 12px 8px; border-radius: 18px; cursor: pointer;
+  border: 2px solid var(--line); background: var(--paper-2); color: var(--ink);
+  font: inherit; font-weight: 800; transition: transform 0.15s, border-color 0.15s, background 0.15s;
+}
+.status-icon { font-size: 30px; line-height: 1; }
+.status-label { font-size: 15px; line-height: 1.2; }
+.status-choice:hover { border-color: var(--gold-bright); }
+.status-choice:active { transform: scale(0.97); }
+.status-choice:focus-visible { outline: 3px solid var(--gold-bright); outline-offset: 2px; }
+.status-choice.done { border-color: var(--pine); }
+.status-choice.done .status-icon { color: var(--pine); }
+.status-choice.active { border-color: var(--berry-strong); background: var(--berry-strong); color: #fff; box-shadow: 0 0 0 3px var(--gold-bright); }
+.status-later { margin-top: 4px; color: var(--muted); }
+
+/* Lettre : barre « Enregistrer / Terminé » collée en bas de l'écran pendant l'écriture */
+.letter-savebar {
+  position: sticky; bottom: calc(10px + env(safe-area-inset-bottom, 0px)); z-index: 5;
+  display: flex; gap: 8px; justify-content: center; align-items: center; flex-wrap: nowrap;
+  margin: 12px auto 4px; padding: 8px 10px; width: fit-content; max-width: 100%;
+  background: var(--paper); border: 1px solid var(--gold-bright); border-radius: 999px;
+  box-shadow: 0 12px 28px -10px rgba(0, 0, 0, 0.45);
+}
+.letter-savebar .btn { min-height: 44px; margin: 0; white-space: nowrap; padding-inline: 16px; flex: 0 0 auto; }
+/* La barre est en bas : les messages de confirmation passent au-dessus d'elle */
+body:has(.letter-savebar:not([hidden])) .toast { bottom: calc(92px + env(safe-area-inset-bottom, 0px)); }

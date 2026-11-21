@@ -188,6 +188,7 @@ const forgetDraft = () => { try { localStorage.removeItem(draftKey()); } catch {
 const isUnwrapped = () => !state.group.drawn || state.group.revealed || !state.recipient || Boolean(state.giftOpened) || Boolean(storage.get(unwrapKey(), false));
 // Retenu par le serveur : une seule fois par personne, quel que soit l'appareil.
 const markUnwrapped = () => {
+  skipStatusThisVisit(); // cadeau découvert à l'instant : la question attendra la prochaine visite
   storage.set(unwrapKey(), true);
   state.giftOpened = true;
   api('POST', `${base}/gift-opened`, { drawnAt: state.group.drawnAt }).catch(() => { /* hors ligne : réessayé à la prochaine ouverture */ });
@@ -987,7 +988,8 @@ function renderMain() {
       if (!wishlistPromptDone && !state.me.wishlist && !exchangeReached()) openWishlistOverlay(openGiftIfPending);
       else openGiftIfPending();
     });
-  } else openGiftIfPending();
+  } else if (giftPending()) openGiftIfPending();
+  else maybeAskGiftStatus();
   if (group.drawn && !isUnwrapped()) {
     // Les discussions montrent le prénom : elles apparaissent une fois le cadeau ouvert.
     chat = null;
@@ -1355,6 +1357,72 @@ function renderInfo() {
   updateQuickbar();
 }
 
+let giftStatusAsked = false; // déjà demandé pendant cette visite
+/**
+ * Connexions suivantes, après le tirage (cadeau déjà découvert) : avant d'arriver sur la page,
+ * on demande en plein écran où en est le cadeau. Une fois par visite (pas à chaque
+ * rechargement), pas avant l'ouverture du cadeau, plus quand il est emballé ni après l'échange.
+ */
+const statusAskedKey = () => `ss_status_asked_${token}`;
+/** Pas de question pendant cette visite (ex. on vient de se connecter pour la 1re fois ou d'ouvrir son cadeau). */
+function skipStatusThisVisit() {
+  giftStatusAsked = true;
+  try { sessionStorage.setItem(statusAskedKey(), '1'); } catch { /* stockage indisponible */ }
+}
+function maybeAskGiftStatus() {
+  const { group, recipient, me } = state;
+  if (codeCreatedNotice) { skipStatusThisVisit(); return; } // toute 1re connexion : déjà assez d'écrans
+  if (giftStatusAsked || !group.drawn || group.revealed || !recipient || !isUnwrapped()) return;
+  if (me.giftStatus === 'wrapped' || exchangeReached()) return;
+  if (new URLSearchParams(location.search).get('ouvrir')) return; // venu lire un message
+  if (document.querySelector('.gift-overlay')) return;
+  try { if (sessionStorage.getItem(statusAskedKey())) return; } catch { /* stockage indisponible */ }
+  skipStatusThisVisit();
+  openGiftStatusOverlay(recipient.name);
+}
+
+function openGiftStatusOverlay(recipientName) {
+  const current = state.me.giftStatus;
+  const currentIndex = GIFT_STEPS.findIndex(([k]) => k === current);
+  const later = el('button', { class: 'btn btn-ghost btn-block status-later', type: 'button' }, current ? 'Pas de changement' : 'Plus tard');
+  const choices = GIFT_STEPS.map(([key, icon, label], i) => el('button', {
+    type: 'button',
+    class: `status-choice${key === current ? ' active' : ''}${i < currentIndex ? ' done' : ''}`,
+    'aria-pressed': String(key === current),
+    onclick: async (e) => {
+      if (key === state.me.giftStatus) { close(); return; }
+      const result = await withButton(e.currentTarget, () => api('PUT', `${base}/gift-status`, { status: key }));
+      if (!result) return;
+      state.me.giftStatus = result.giftStatus;
+      close();
+      renderInfo();
+      toast(result.giftStatus === 'wrapped' ? 'Bravo, cadeau prêt ! 🎀' : 'Avancement enregistré.', 'success');
+    },
+  }, el('span', { class: 'status-icon', 'aria-hidden': 'true' }, i < currentIndex ? '✓' : icon), el('span', { class: 'status-label' }, label)));
+  const panel = el('div', { class: 'status-modal card' },
+    el('p', { class: 'eyebrow' }, `Bon retour, ${state.me.name} !`),
+    el('h2', { id: 'status-title', tabindex: '-1' }, `🎁 Où en est le cadeau pour ${recipientName} ?`),
+    el('p', { class: 'muted' }, 'Personne d’autre ne voit ta réponse : l’organisateur voit seulement combien de cadeaux sont prêts.'),
+    el('div', { class: 'status-choices', role: 'group', 'aria-labelledby': 'status-title' }, choices),
+    later,
+  );
+  const overlay = el('div', { class: 'gift-overlay status-overlay', role: 'dialog', 'aria-modal': 'true', 'aria-labelledby': 'status-title' }, panel);
+  const previous = document.activeElement;
+  const onKey = (e) => { if (e.key === 'Escape' && !document.querySelector('dialog[open]')) close(); };
+  function close() {
+    overlay.remove();
+    document.removeEventListener('keydown', onKey);
+    if (!document.querySelector('.gift-overlay')) { root.inert = false; document.body.classList.remove('gift-open'); }
+    if (previous?.isConnected) previous.focus({ preventScroll: true });
+  }
+  later.addEventListener('click', close);
+  document.addEventListener('keydown', onKey);
+  document.body.append(overlay);
+  document.body.classList.add('gift-open');
+  root.inert = true;
+  panel.querySelector('#status-title').focus({ preventScroll: true });
+}
+
 /** Suivi du cadeau : le Père Noël indique où il en est (l'organisateur ne voit que des totaux). */
 function renderGiftProgress(recipientName) {
   const current = state.me.giftStatus;
@@ -1587,9 +1655,24 @@ function renderWishlistCard(initial, draft = null) {
     updateStatus();
     area.grow();
     if (!preview.hidden) togglePreview(true);
+    savebar.hidden = document.activeElement !== area;
   };
+  // Pendant l'écriture (surtout sur téléphone, clavier ouvert) : une barre reste collée en bas
+  // de l'écran avec « Enregistrer » et « Terminé » (qui referme le clavier).
+  const doneBtn = el('button', { class: 'btn btn-ghost btn-small letter-done', type: 'button', hidden: true, onclick: () => area.blur() }, '✓ Terminé');
+  const saveNow = el('button', { class: 'btn btn-primary btn-small', type: 'submit' }, '💾 Enregistrer');
+  const savebar = el('div', { class: 'letter-savebar', hidden: true }, saveNow, doneBtn);
+  const updateSavebar = () => {
+    const writing = document.activeElement === area;
+    savebar.hidden = !(writing || area.value !== saved);
+    doneBtn.hidden = !writing;
+  };
+  area.addEventListener('focus', updateSavebar);
+  area.addEventListener('blur', () => setTimeout(updateSavebar, 0));
+  area.addEventListener('input', updateSavebar);
   const form = el('form', { novalidate: true, class: 'letter-form' },
     letterSheet([editBox, preview], myName),
+    savebar,
     el('div', { class: 'rubrics' },
       el('p', { class: 'rubrics-title', id: 'rubrics-title' }, '💡 Besoin d’idées ? Ajoute une rubrique :'),
       el('div', { class: 'rubric-list', role: 'group', 'aria-labelledby': 'rubrics-title' }, chips)),
@@ -1606,6 +1689,7 @@ function renderWishlistCard(initial, draft = null) {
     redrawDates();
     updateQuickbar();
     if (!preview.hidden) togglePreview(true);
+    updateSavebar();
     toast('Lettre au Père Noël enregistrée ! 🎅', 'success');
   });
   area.addEventListener('input', () => updateQuickbar());
