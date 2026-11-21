@@ -1,4 +1,4 @@
-import { api, el, clear, tokenFromPath, formatDate, storage, onComputer, icon } from './common.js';
+import { api, el, clear, tokenFromPath, formatDate, storage, onComputer } from './common.js';
 
 // Page du lien de groupe : chacun choisit son prénom, puis arrive sur sa page
 // personnelle (protégée par son code secret).
@@ -29,14 +29,14 @@ async function openOrganiser() {
   code.addEventListener('input', () => { const d = code.value.replace(/\D/g, '').slice(0, 12); if (d !== code.value) code.value = d; code.removeAttribute('aria-invalid'); });
   const error = el('p', { class: 'form-error', role: 'alert', hidden: true });
   const submit = el('button', { class: 'btn btn-primary', type: 'submit' }, 'Entrer');
-  const cancel = el('button', { class: 'btn btn-ghost', type: 'button' }, 'Annuler');
+  const cancel = el('button', { class: 'btn', type: 'button' }, 'Annuler');
   const form = el('form', { class: 'ask-form', novalidate: true },
-    el('span', { class: 'ask-grabber', 'aria-hidden': 'true' }),
-    el('h2', { class: 'ask-title' }, icon('key-round'), "Je suis l'organisateur"),
-    el('label', { class: 'field', for: 'organiser-code' }, el('span', {}, 'Code organisateur'), code),
+    el('h2', { class: 'ask-title' }, "🎩 Je suis l'organisateur"),
+    el('label', { class: 'field', for: 'organiser-code' }, el('span', {}, 'Code organisateur')),
+    code,
     el('p', { class: 'muted small', id: 'organiser-help' }, "Entre le code choisi à la création du groupe. Après 5 essais ratés, l'accès est bloqué un moment."),
     error,
-    el('div', { class: 'ask-actions' }, submit, cancel));
+    el('div', { class: 'ask-actions' }, cancel, submit));
   const dialog = el('dialog', { class: 'ask', 'aria-labelledby': 'organiser-title' }, form);
   form.querySelector('h2').id = 'organiser-title';
   const close = () => { dialog.close(); dialog.remove(); };
@@ -76,37 +76,47 @@ function go(person, tile = null) {
   // Petite animation qui confirme le prénom choisi, avant d'ouvrir sa page.
   card.classList.add('choosing');
   if (tile) {
-    // La case choisie se soulève, un reflet doré la traverse et quelques paillettes montent.
-    tile.scrollIntoView({ block: 'nearest', behavior: 'auto' });
-    // Assez haut pour ne pas passer sous la confirmation, en bas de l'écran.
-    const r = tile.getBoundingClientRect();
-    const room = window.innerHeight - 96;
-    if (r.bottom > room) window.scrollBy(0, r.bottom - room);
+    // Animation de Noël : la case se balance comme une cloche, la lettre se retourne en
+    // Père Noël, et flocons, étoiles, sapins, clochettes et cadeaux jaillissent autour.
     tile.classList.add('chosen');
     tile.setAttribute('aria-current', 'true');
-    tile.append(el('span', { class: 'chosen-sheen', 'aria-hidden': 'true' }));
-    if (!reduce) {
-      const colors = ['#C9A45C', '#E6C987', '#FBF7EF'];
-      for (let i = 0; i < 12; i += 1) {
-        const speck = el('span', { class: 'chosen-speck', 'aria-hidden': 'true' });
-        speck.style.setProperty('--x', `${8 + ((i * 83) % 84)}%`);
-        speck.style.setProperty('--c', colors[i % colors.length]);
-        speck.style.setProperty('--delay', `${(i % 6) * 0.05}s`);
-        speck.style.setProperty('--drift', `${(i % 2 ? 1 : -1) * (4 + (i % 4) * 3)}px`);
-        tile.append(speck);
-      }
+    tile.append(el('span', { class: 'chosen-check', 'aria-hidden': 'true' }, '✓'));
+    const avatar = tile.querySelector('.avatar');
+    if (avatar && !reduce) {
+      avatar.classList.add('flip-out');
+      setTimeout(() => { avatar.textContent = '🎅'; avatar.classList.remove('flip-out'); avatar.classList.add('flip-in', 'santa'); }, 260);
+    } else if (avatar) {
+      avatar.textContent = '🎅';
+      avatar.classList.add('santa');
+    }
+    const shapes = ['❄️', '⭐', '🎄', '🔔', '🎁', '✨', '❄️', '⭐'];
+    for (let i = 0; i < 16; i += 1) {
+      const spark = el('span', { class: 'chosen-spark xmas', 'aria-hidden': 'true' }, shapes[i % shapes.length]);
+      const angle = (Math.PI * 2 * i) / 16 + 0.2;
+      spark.style.setProperty('--dx', `${Math.cos(angle) * (70 + (i % 3) * 22)}px`);
+      spark.style.setProperty('--dy', `${Math.sin(angle) * (48 + (i % 3) * 16)}px`);
+      spark.style.setProperty('--rot', `${(i % 2 ? 1 : -1) * (40 + i * 9)}deg`);
+      spark.style.setProperty('--delay', `${(i % 4) * 0.04}s`);
+      tile.append(spark);
     }
   }
-  // La confirmation est posée en bas de l'écran ; la zone d'annonce existe déjà, vide,
-  // pour que les lecteurs d'écran la lisent.
+  // La bulle de confirmation est fixée en bas de l'écran (visible quelle que soit la position
+  // dans la liste) ; la zone d'annonce existe déjà, vide, pour que les lecteurs d'écran la lisent.
   let msg = document.querySelector('.chosen-msg');
   if (!msg) {
     msg = el('p', { class: 'chosen-msg', role: 'status', 'aria-live': 'polite' });
     document.body.append(msg);
   }
-  clear(msg, icon('check-circle', { size: 20, className: 'chosen-msg-icon' }), el('span', {}, `C’est toi, ${person.name} !`));
+  msg.textContent = `C’est toi, ${person.name} ! 🎄`;
+  if (tile) {
+    // La case choisie entièrement visible, et la bulle du côté opposé pour ne pas la cacher.
+    const r = tile.getBoundingClientRect();
+    msg.classList.toggle('at-top', r.top + r.height / 2 > window.innerHeight / 2);
+    tile.scrollIntoView({ block: 'nearest', behavior: reduce ? 'auto' : 'smooth' });
+  }
   msg.classList.add('show');
-  setTimeout(() => { location.href = url; }, reduce ? 800 : 1200);
+  // Même durée sans animation : on retire le mouvement, pas le temps de lecture.
+  setTimeout(() => { location.href = url; }, 1400);
 }
 
 async function load() {
@@ -115,6 +125,7 @@ async function load() {
     data = await api('GET', `/api/g/${encodeURIComponent(invite)}`);
   } catch (err) {
     clear(root, el('section', { class: 'card gate-card center' },
+      el('div', { class: 'hero-icon', 'aria-hidden': 'true' }, '😕'),
       el('h1', {}, 'Lien introuvable'),
       el('p', {}, err.message),
     ));
@@ -126,12 +137,15 @@ async function load() {
   const me = remembered && participants.find((p) => p.token === remembered.token);
 
   // Seulement la date : le budget est rappelé sur la page de chacun.
-  const people = el('div', { class: 'people', id: 'gate-people' }, participants.map((p, i) => el('button', {
+  const facts = [
+    group.eventDate ? `📅 ${formatDate(group.eventDate)}` : null,
+  ].filter(Boolean);
+
+  const people = el('div', { class: 'people' }, participants.map((p) => el('button', {
     class: `person${me && me.token === p.token ? ' current' : ''}`, type: 'button',
     onclick: (e) => go(p, e.currentTarget),
   },
-    // Couleur selon la place dans la liste (jamais selon la personne) : elle ne révèle rien.
-    el('span', { class: `avatar avatar-initial avatar-tone-${i % 4}`, 'aria-hidden': 'true' }, initial(p.name)),
+    el('span', { class: 'avatar avatar-initial', 'aria-hidden': 'true' }, initial(p.name)),
     el('span', { class: 'person-text' },
       el('span', { class: 'person-name' }, p.name),
     ),
@@ -139,17 +153,16 @@ async function load() {
 
   clear(root,
     el('section', { class: 'card gate-card', 'aria-labelledby': 'gate-title' },
-      el('div', { class: 'gate-hero' },
-        el('div', { class: 'gate-art', 'aria-hidden': 'true' }, icon('gift-art', { size: 72 })),
-        el('p', { class: 'eyebrow' }, group.name),
-        el('h1', { id: 'gate-title' }, 'Qui es-tu ?'),
-        group.eventDate ? el('p', { class: 'gate-facts' }, icon('calendar', { size: 16 }), el('span', {}, formatDate(group.eventDate))) : null),
+      el('div', { class: 'gate-icon', 'aria-hidden': 'true' }, '🎅'),
+      el('p', { class: 'eyebrow center' }, group.name),
+      el('h1', { id: 'gate-title', class: 'center' }, 'Qui es-tu ?'),
+      facts.length ? el('p', { class: 'gate-facts' }, facts.join('  ·  ')) : null,
       me ? el('button', { class: 'btn btn-primary btn-block continue', type: 'button', onclick: () => go(me, root.querySelector('.person.current')) },
         `Continuer en tant que ${me.name}`) : null,
-      me ? el('p', { class: 'divider' }, el('span', {}, 'ou choisis un autre prénom')) : el('p', { class: 'gate-hint' }, `${onComputer() ? 'Clique' : 'Appuie'} sur ton prénom pour ouvrir ta page.`),
+      me ? el('p', { class: 'gate-or' }, 'ou choisis un autre prénom') : el('p', { class: 'center muted' }, `${onComputer() ? 'Clique' : 'Appuie'} sur ton prénom pour ouvrir ta page.`),
       people,
-      el('p', { class: 'divider' }, el('span', {}, 'ou')),
-      el('button', { class: 'btn btn-block organiser-btn', type: 'button', onclick: openOrganiser }, icon('key-round', { size: 18 }), "Je suis l'organisateur"),
+      el('p', { class: 'gate-or' }, 'ou'),
+      el('button', { class: 'btn btn-block organiser-btn', type: 'button', onclick: openOrganiser }, "🎩 Je suis l'organisateur"),
       el('p', { class: 'gate-note' },
         'La première fois, tu choisis un code secret (4 chiffres ou plus) qui protège ta page. ',
         el('strong', {}, "Si on te demande ton code alors que tu n'en as jamais choisi, préviens l'organisateur.")),
@@ -157,6 +170,8 @@ async function load() {
   );
   // Zone d'annonce vide, prête avant le choix : « C'est toi, … ! » y sera écrit.
   if (!document.querySelector('.chosen-msg')) document.body.append(el('p', { class: 'chosen-msg', role: 'status', 'aria-live': 'polite' }));
+  // Au clavier/souris seulement : sur téléphone, un cadre de focus ferait croire à une sélection.
+  if (window.matchMedia?.('(pointer: fine)').matches) (root.querySelector('.continue') || root.querySelector('.person'))?.focus();
 }
 
 load();

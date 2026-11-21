@@ -1,5 +1,5 @@
 // Album souvenir : galerie, carte souvenir téléchargeable (photo + mot), envoi de photo.
-import { el, clear, linkify, frTypo, isBrandName, icon } from './common.js';
+import { el, clear, linkify, frTypo, isBrandName } from './common.js';
 
 /** Réduit la photo (1600 px max), la convertit en JPEG et retire ses métadonnées (dont le GPS). */
 export async function prepareImage(file) {
@@ -85,12 +85,12 @@ export async function downloadCard(entry, photoUrl, groupName) {
   const ctx = canvas.getContext('2d');
   const title = `Cadeau de ${entry.giverName} pour ${entry.name}`;
   const fonts = {
-    title: '600 52px Fraunces, Georgia, serif',
+    title: '700 52px Fredoka, Nunito, system-ui, sans-serif',
     group: '700 30px Nunito, system-ui, sans-serif',
     note: '400 40px Nunito, system-ui, sans-serif',
   };
   ctx.font = fonts.title;
-  const titleLines = wrapLines(ctx, frTypo(title), inner);
+  const titleLines = wrapLines(ctx, frTypo(`🎁 ${title}`), inner);
   ctx.font = fonts.group;
   const groupLines = wrapLines(ctx, frTypo(isBrandName(groupName) ? 'Secret Santa' : `Secret Santa · ${groupName}`), inner);
   ctx.font = fonts.note;
@@ -101,10 +101,10 @@ export async function downloadCard(entry, photoUrl, groupName) {
   const textH = pad + titleLines.length * 62 + 12 + groupLines.length * 40 + (noteLines.length ? 34 + noteLines.length * 54 : 0) + pad;
   canvas.width = W;
   canvas.height = photoH + textH;
-  ctx.fillStyle = '#FBF7EF';
+  ctx.fillStyle = '#fffdfa';
   ctx.fillRect(0, 0, W, canvas.height);
   if (photo) {
-    ctx.fillStyle = '#F3ECDF';
+    ctx.fillStyle = '#f6f0e8';
     ctx.fillRect(0, 0, W, photoH);
     // « contain » : toute la photo est visible
     const ratio = Math.min(W / photo.width, photoH / photo.height);
@@ -112,17 +112,17 @@ export async function downloadCard(entry, photoUrl, groupName) {
     const dh = photo.height * ratio;
     ctx.drawImage(photo, (W - dw) / 2, (photoH - dh) / 2, dw, dh);
   }
-  ctx.fillStyle = '#C9A45C';
-  ctx.fillRect(0, photoH, W, 6);
+  ctx.fillStyle = '#c62f3e';
+  ctx.fillRect(0, photoH, W, 12);
   let y = photoH + pad + 40;
-  ctx.fillStyle = '#A3202F';
+  ctx.fillStyle = '#b42a3a';
   ctx.font = fonts.title;
   for (const line of titleLines) {
     ctx.fillText(line, pad, y);
     y += 62;
   }
   y += 2;
-  ctx.fillStyle = '#6B5F5A';
+  ctx.fillStyle = '#685b61';
   ctx.font = fonts.group;
   for (const line of groupLines) {
     ctx.fillText(line, pad, y);
@@ -130,7 +130,7 @@ export async function downloadCard(entry, photoUrl, groupName) {
   }
   if (noteLines.length) {
     y += 34;
-    ctx.fillStyle = '#22191B';
+    ctx.fillStyle = '#241c1f';
     ctx.font = fonts.note;
     for (const line of noteLines) {
       ctx.fillText(line, pad, y);
@@ -150,17 +150,13 @@ export async function downloadCard(entry, photoUrl, groupName) {
 /** Galerie de l'album : une carte par cadeau reçu. */
 export function renderGallery(entries, { photoUrl, groupName, meId = null }) {
   const shown = entries.filter((e) => e.hasPhoto || e.note);
-  if (!shown.length) {
-    return el('div', { class: 'album-empty' },
-      el('span', { class: 'album-empty-art', 'aria-hidden': 'true' }, icon('images', { size: 32 })),
-      el('p', { class: 'muted' }, "L'album est encore vide. Les photos et les petits mots apparaîtront ici."));
-  }
+  if (!shown.length) return el('p', { class: 'muted center album-empty' }, "L'album est encore vide. Les photos et les petits mots apparaîtront ici.");
   return el('div', { class: 'gallery' }, shown.map((e) => el('figure', { class: 'polaroid' },
     e.hasPhoto
       // Un appui ouvre la photo entière (la galerie la recadre).
       ? el('a', { class: 'polaroid-photo', href: photoUrl(e), target: '_blank', rel: 'noopener', 'aria-label': `Voir en grand la photo du cadeau reçu par ${e.name}` },
         el('img', { src: photoUrl(e), alt: `Cadeau reçu par ${e.name}`, loading: 'lazy' }))
-      : el('div', { class: 'polaroid-empty' }, icon('gift', { size: 24 }), el('span', {}, 'Pas encore de photo')),
+      : el('div', { class: 'polaroid-empty', 'aria-hidden': 'true' }, '🎁'),
     el('figcaption', {},
       el('strong', {}, `Cadeau de ${e.giverName} pour ${e.name}`, e.id === meId ? ' (toi)' : ''),
       e.note ? el('p', { class: 'polaroid-note' }, linkify(e.note)) : null,
@@ -175,7 +171,7 @@ export function renderGallery(entries, { photoUrl, groupName, meId = null }) {
             btn.disabled = false;
           }
         },
-      }, icon('download', { size: 18 }), 'Télécharger la carte'),
+      }, '⬇️ Télécharger la carte'),
     ),
   )));
 }
