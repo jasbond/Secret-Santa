@@ -1,4 +1,7 @@
 import './decor.js';
+import { icon } from './icons.js';
+
+export { icon };
 // Utilitaires partagés. Tout le texte est inséré avec textContent : jamais d'innerHTML.
 
 export async function api(method, url, body) {
@@ -59,7 +62,9 @@ export function frTypo(text) {
     // Les milliers restent ensemble : « 2 000 XPF » ne se coupe pas entre 2 et 000.
     .replace(/(\d) (?=\d{3}(?!\d))/g, '$1\u00a0').replace(/(\d) (XPF|€|F\b)/g, '$1\u00a0$2')
     // Une initiale reste avec le prénom : « Salomé M » ne se coupe pas avant le M.
-    .replace(/(\p{L}) (\p{Lu}\.?)(?=\s|$)/gu, '$1\u00a0$2');
+    .replace(/(\p{L}) (\p{Lu}\.?)(?=\s|$)/gu, '$1\u00a0$2')
+    // Trait d'union insécable : « Garde‑le », « Toi‑même », « peut‑être » ne se coupent pas.
+    .replace(/\b([Gg]arde|[Tt]oi|[Pp]eut)-(le|même|être)(?![\p{L}])/gu, '$1\u2011$2');
 }
 
 function append(node, children) {
@@ -108,6 +113,7 @@ export function clear(node, ...children) {
 }
 
 let toastTimer;
+let toastQueue = [];
 // La zone des messages existe dès le chargement : une zone « live » créée au moment
 // du message n'est souvent pas lue par les lecteurs d'écran.
 function toastBox() {
@@ -121,12 +127,43 @@ function toastBox() {
 if (document.body) toastBox();
 else document.addEventListener('DOMContentLoaded', toastBox, { once: true });
 
-export function toast(message, type = 'info') {
+const TOAST_ICONS = { success: 'check-circle', error: 'circle-alert', info: 'info' };
+/** Une fenêtre plein écran est ouverte (cadeau, lettre, calendrier…) : les messages attendent. */
+const overlayOpen = () => document.body?.classList.contains('gift-open');
+
+function showToast(message, type) {
   const box = toastBox();
-  box.textContent = frTypo(message);
-  box.className = `toast toast-${type} show`;
+  box.replaceChildren(icon(TOAST_ICONS[type] || 'info', { size: 18, className: 'toast-icon' }), el('span', { class: 'toast-text' }, message));
+  box.className = `toast toast-${type}`;
+  // Nouvelle apparition à chaque message (le petit mouvement rejoue).
+  void box.offsetWidth;
+  box.classList.add('show');
   clearTimeout(toastTimer);
   toastTimer = setTimeout(() => box.classList.remove('show'), type === 'error' ? 5000 : 2800);
+}
+
+// Les messages mis de côté s'affichent juste après la fermeture de la fenêtre plein écran.
+if (window.MutationObserver) {
+  const watch = () => new MutationObserver(() => {
+    if (!toastQueue.length || overlayOpen()) return;
+    const queued = toastQueue;
+    toastQueue = [];
+    setTimeout(() => {
+      if (overlayOpen()) { toastQueue.push(...queued); return; }
+      for (const [m, t] of queued.slice(-1)) showToast(m, t);
+    }, 300);
+  }).observe(document.body, { attributes: true, attributeFilter: ['class'] });
+  if (document.body) watch();
+  else document.addEventListener('DOMContentLoaded', watch, { once: true });
+}
+
+export function toast(message, type = 'info') {
+  // Jamais de message par-dessus une fenêtre plein écran (sauf une erreur, qui doit se voir).
+  if (overlayOpen() && type !== 'error') {
+    toastQueue.push([message, type]);
+    return;
+  }
+  showToast(message, type);
 }
 
 export function formatDate(iso) {
@@ -218,15 +255,16 @@ export function ask(message, {
     const previous = document.activeElement;
     const field = input ? el('input', { value: input.value ?? '', maxlength: String(input.maxLength ?? 80), 'aria-label': input.label ?? 'Valeur', autocomplete: 'off' }) : null;
     const confirmButton = el('button', { class: `btn ${danger ? 'btn-danger' : 'btn-primary'}`, type: 'submit' }, confirmLabel);
-    const cancelButton = el('button', { class: 'btn', type: 'button', onclick: () => close(null) }, cancelLabel);
+    const cancelButton = el('button', { class: 'btn btn-ghost', type: 'button', onclick: () => close(null) }, cancelLabel);
     const error = el('p', { class: 'form-error', role: 'alert', hidden: true });
     const paragraphs = String(message).split(/\n{2,}/).map((part) => el('p', {}, part.split('\n').flatMap((line, i) => (i ? [el('br'), line] : [line]))));
     const form = el('form', { method: 'dialog', class: 'ask-form' },
+      el('span', { class: 'ask-grabber', 'aria-hidden': 'true' }),
       title ? el('h2', { class: 'ask-title' }, title) : null,
       el('div', { class: 'ask-message' }, paragraphs),
       field,
       error,
-      el('div', { class: 'ask-actions' }, cancelButton, confirmButton),
+      el('div', { class: 'ask-actions' }, confirmButton, cancelButton),
     );
     const dialog = el('dialog', { class: `ask${danger ? ' ask-danger' : ''}`, 'aria-label': title || 'Confirmation' }, form);
     let done = false;
@@ -327,3 +365,11 @@ export function pageTitle(name) {
 
 /** Ordinateur (souris) ou téléphone (doigt) : pour dire « clique » ou « touche ». */
 export const onComputer = () => Boolean(window.matchMedia?.('(hover: hover) and (pointer: fine)').matches);
+
+/**
+ * Libellé de bouton en deux longueurs : le texte complet, et un texte court qui le remplace
+ * sur les très petits écrans (moins de 360 px), pour qu'il tienne sur une ligne.
+ */
+export function fitLabel(long, short) {
+  return el('span', {}, el('span', { class: 'lbl-long' }, long), el('span', { class: 'lbl-short' }, short));
+}

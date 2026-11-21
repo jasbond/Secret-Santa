@@ -2,7 +2,7 @@
 <html lang="fr">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="referrer" content="no-referrer">
   <title>Secret Santa</title>
   <link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
@@ -10,30 +10,14 @@
   <script type="module" src="/static/index.js"></script>
 </head>
 <body>
-  <main class="container">
+  <main class="container home">
     <header class="hero">
-      <div class="hero-icon" aria-hidden="true">🎁</div>
+      <div class="hero-art" aria-hidden="true"></div>
       <h1>Secret Santa</h1>
       <p class="lead">Tire au sort qui offre à qui, puis discute anonymement avec ton Père Noël secret.</p>
     </header>
 
-    <section class="card steps">
-      <h2>Comment ça marche ?</h2>
-      <ol>
-        <li><strong>Crée le groupe</strong> et ajoute les participants.</li>
-        <li><strong>Partage le lien du groupe</strong> dans votre conversation (Messenger, WhatsApp…). Chacun choisit son prénom et un code secret.</li>
-        <li><strong>Lance le tirage</strong>. Chacun découvre à qui il offre un cadeau, sans savoir qui lui offre le sien.</li>
-        <li><strong>Discute anonymement</strong> : pose des questions à ton Père Noël secret, ou demande discrètement à ta personne ce qui lui ferait plaisir.</li>
-      </ol>
-      <p class="muted small">Les discussions restent anonymes et privées jusqu'à la révélation. Ensuite, un album souvenir s'ouvre et tout peut être téléchargé : photos, petits mots et discussions. L'organisateur peut afficher qui offre à qui, s'il le souhaite.</p>
-    </section>
-
-    <section class="card" id="my-groups" hidden>
-      <h2>Mes groupes (sur cet appareil)</h2>
-      <ul class="link-list" id="my-groups-list"></ul>
-    </section>
-
-    <section class="card">
+    <section class="card create-card">
       <h2>Créer un groupe</h2>
       <form id="create-form" novalidate>
         <label class="field">
@@ -47,27 +31,44 @@
           </label>
           <label class="field">
             <span>Date de l'échange</span>
-            <input name="eventDate" type="date">
+            <input name="eventDate" type="date" aria-describedby="event-date-preview">
+            <span class="date-preview" id="event-date-preview" aria-live="polite"></span>
           </label>
         </div>
         <label class="field">
           <span>Message pour les participants</span>
-          <textarea name="description" rows="2" maxlength="1000" placeholder="Échange des cadeaux chez Mamie après le dessert !"></textarea>
+          <textarea name="description" rows="2" maxlength="1000" placeholder="Échange des cadeaux chez Mamie après le dessert !"></textarea>
         </label>
         <label class="field">
-          <span>Code organisateur <span class="muted">(facultatif, 4 à 12 chiffres)</span></span>
-          <input name="adminCode" type="password" inputmode="numeric" pattern="[0-9]*" maxlength="12" autocomplete="off" placeholder="Pour « Je suis l'organisateur » dans le lien du groupe">
+          <span>Code organisateur <span class="muted">(facultatif, pour « Je suis l'organisateur » dans le lien du groupe)</span></span>
+          <input name="adminCode" type="password" inputmode="numeric" pattern="[0-9]*" maxlength="12" autocomplete="off" placeholder="4 à 12 chiffres">
         </label>
         <label class="field">
           <span>Participants <span class="muted">(un prénom par ligne, tu pourras en ajouter plus tard)</span></span>
           <textarea name="participants" rows="6" placeholder="Alice&#10;Bob&#10;Chloé&#10;David"></textarea>
         </label>
-        <p class="muted small">Si tu participes toi aussi, ajoute ton propre prénom dans la liste.</p>
+        <p class="field-help muted small">Si tu participes toi aussi, ajoute ton propre prénom dans la liste.</p>
         <button class="btn btn-primary btn-block" type="submit">Créer le groupe</button>
       </form>
     </section>
 
-    <footer class="footer muted small">Fait avec ❤️ pour les fêtes</footer>
+    <section class="card" id="my-groups" hidden>
+      <h2>Mes groupes (sur cet appareil)</h2>
+      <ul class="link-list" id="my-groups-list"></ul>
+    </section>
+
+    <details class="card steps">
+      <summary><h2>Comment ça marche ?</h2><svg class="icon summary-chevron" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="m6 9 6 6 6-6"/></svg></summary>
+      <ol class="numbered">
+        <li><strong>Crée le groupe</strong> et ajoute les participants.</li>
+        <li><strong>Partage le lien du groupe</strong> dans votre conversation (Messenger, WhatsApp…). Chacun choisit son prénom et un code secret.</li>
+        <li><strong>Lance le tirage</strong>. Chacun découvre à qui il offre un cadeau, sans savoir qui lui offre le sien.</li>
+        <li><strong>Discute anonymement</strong> : pose des questions à ton Père Noël secret, ou demande discrètement à ta personne ce qui lui ferait plaisir.</li>
+      </ol>
+      <p class="muted small">Les discussions restent anonymes et privées jusqu'à la révélation. Ensuite, un album souvenir s'ouvre et tout peut être téléchargé : photos, petits mots et discussions. L'organisateur peut afficher qui offre à qui, s'il le souhaite.</p>
+    </details>
+
+    <footer class="footer">Joyeuses fêtes · Fenua 2026</footer>
   </main>
 </body>
 </html>

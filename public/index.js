@@ -1,6 +1,14 @@
-import { api, el, clear, toast, withButton, storage } from './common.js';
+import { api, el, clear, toast, withButton, storage, icon, formatDate } from './common.js';
 
 const form = document.getElementById('create-form');
+
+document.querySelector('.hero-art')?.append(icon('gift-art', { size: 88 }));
+// La date en toutes lettres sous le champ : l'ordre jour/mois du navigateur ne trompe personne.
+const dateField = form.elements.eventDate;
+const datePreview = document.getElementById('event-date-preview');
+const showDate = () => { datePreview.textContent = dateField.value ? formatDate(dateField.value) : ''; };
+dateField.addEventListener('input', showDate);
+showDate();
 
 function renderMyGroups() {
   const groups = storage.get('ss_admin_groups', []);
