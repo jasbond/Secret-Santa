@@ -136,7 +136,7 @@ Il faut **une seule instance** : la base SQLite est un fichier local, et le serv
 
 ## Créer le groupe en une commande
 
-Le fichier `groupe.json` contient déjà la liste des participants (Chloe, Cousine Salomé, Dany, Jason, Jessy, Kalea, Kea, Miti, Reva, Salomé J, Salomé M, Veldea, Welma), l'échange le 19 décembre 2026 et la date limite des lettres au Père Noël le 29 novembre. Une fois le site en ligne :
+Le fichier `groupe.json` contient déjà la liste des participants (Chloe, Cousine Salomé, Dani, Jason, Jessy, Kalea, Kea, Miti, Reva, Salomé J, Salomé M, Veldea, Welma), l'échange le 19 décembre 2026 et la date limite des lettres au Père Noël le 29 novembre. Une fois le site en ligne :
 
 ```bash
 CODE_ORGANISATEUR=123456 npm run creer-groupe -- https://adresse-du-site
