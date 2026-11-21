@@ -210,28 +210,60 @@ const markUnwrapped = () => {
   api('POST', `${base}/gift-opened`, { drawnAt: state.group.drawnAt }).catch(() => { /* hors ligne : réessayé à la prochaine ouverture */ });
 };
 
-/**
- * Confettis dorés (rectangles et étoiles à 4 branches) qui tombent sur les côtés de l'écran,
- * derrière le prénom : ils ne le cachent jamais.
- */
-function foilConfetti(layer) {
-  if (window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) return;
-  const colors = ['#C9A45C', '#E6C987', '#FBF7EF', '#A3202F'];
-  for (let i = 0; i < 56; i += 1) {
-    const star = i % 5 === 0;
-    const piece = el('span', { class: `foil${star ? ' foil-star' : ''}`, 'aria-hidden': 'true' });
-    // Sur les bords, à gauche ou à droite, et toujours vers l'extérieur : jamais sur le texte.
-    const right = i % 2 === 1;
-    const side = right ? 86 + Math.random() * 14 : Math.random() * 14;
-    piece.style.setProperty('--x', `${side.toFixed(1)}%`);
-    piece.style.setProperty('--c', colors[i % colors.length]);
-    piece.style.setProperty('--dur', `${(2.1 + Math.random() * 0.8).toFixed(2)}s`);
-    piece.style.setProperty('--delay', `${(Math.random() * 0.5).toFixed(2)}s`);
-    piece.style.setProperty('--drift', `${(right ? 1 : -1) * Math.round(Math.random() * 30)}px`);
+/** Petites étoiles, flocons et confettis qui jaillissent du cadeau. */
+function burst(container, count) {
+  const shapes = ['⭐', '❄️', '✨', '🎄', '❤️', '🎉'];
+  const colors = ['#E6C987', '#C9A45C', '#FBF7EF', '#C0313F', '#2F6B4F', '#F0D9A6'];
+  for (let i = 0; i < count; i += 1) {
+    const emoji = i % 3 === 0;
+    const piece = el('span', { class: emoji ? 'burst-piece emoji' : 'burst-piece', 'aria-hidden': 'true' }, emoji ? shapes[i % shapes.length] : '');
+    const angle = (Math.PI * 2 * i) / count + Math.random() * 0.5;
+    const dist = 90 + Math.random() * 120;
+    piece.style.setProperty('--dx', `${Math.cos(angle) * dist}px`);
+    piece.style.setProperty('--dy', `${Math.sin(angle) * dist - 60}px`);
     piece.style.setProperty('--rot', `${Math.round(Math.random() * 720 - 360)}deg`);
+    piece.style.setProperty('--c', colors[i % colors.length]);
+    piece.style.setProperty('--delay', `${Math.random() * 0.15}s`);
+    container.append(piece);
+  }
+}
+
+/** Une gerbe de paillettes dorées, argentées et colorées qui scintillent en s'envolant. */
+function glitterBurst(container, count) {
+  const colors = ['#E6C987', '#FFF3C4', '#C9A45C', '#FFFFFF', '#D9E8FF', '#F0D9A6', '#C0313F', '#4FA37A'];
+  for (let i = 0; i < count; i += 1) {
+    const g = el('span', { class: `glitter${i % 4 === 0 ? ' star' : ''}`, 'aria-hidden': 'true' }, i % 4 === 0 ? '✦' : '');
+    const angle = Math.random() * Math.PI * 2;
+    const dist = 120 + Math.random() * 260;
+    g.style.setProperty('--dx', `${Math.cos(angle) * dist}px`);
+    g.style.setProperty('--dy', `${Math.sin(angle) * dist - 40}px`);
+    g.style.setProperty('--c', colors[i % colors.length]);
+    g.style.setProperty('--s', `${3 + Math.random() * 6}px`);
+    g.style.setProperty('--delay', `${Math.random() * 0.25}s`);
+    g.style.setProperty('--dur', `${1.2 + Math.random() * 0.9}s`);
+    container.append(g);
+  }
+}
+
+/** Pluie de paillettes, de confettis et de flocons sur tout l'écran, juste après l'ouverture. */
+function confettiRain(layer) {
+  if (window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) return;
+  const colors = ['#E6C987', '#C9A45C', '#FBF7EF', '#C0313F', '#4FA37A', '#FFFFFF'];
+  for (let i = 0; i < 110; i += 1) {
+    const glitter = i % 3 !== 0;
+    const piece = glitter
+      ? el('span', { class: `rain-piece sparkle${i % 7 === 0 ? ' star' : ''}` }, i % 7 === 0 ? '✦' : '')
+      : el('span', { class: i % 5 === 0 ? 'rain-piece rain-flake' : 'rain-piece' }, i % 5 === 0 ? '❄' : '');
+    if (glitter) piece.style.setProperty('--s', `${3 + Math.random() * 5}px`);
+    piece.style.setProperty('--x', `${Math.random() * 100}vw`);
+    piece.style.setProperty('--c', colors[i % colors.length]);
+    piece.style.setProperty('--dur', `${2.2 + Math.random() * 1.6}s`);
+    piece.style.setProperty('--delay', `${Math.random() * 0.6}s`);
+    piece.style.setProperty('--drift', `${Math.random() * 80 - 40}px`);
+    piece.style.setProperty('--rot', `${Math.round(Math.random() * 900)}deg`);
     layer.append(piece);
   }
-  setTimeout(() => layer.replaceChildren(), 3600);
+  setTimeout(() => layer.replaceChildren(), 5500);
 }
 
 let giftOverlayDismissed = false; // « Plus tard » : on ne rouvre pas le plein écran à chaque rafraîchissement
@@ -247,15 +279,15 @@ function giftBox(label) {
         el('span', { class: 'g3-body' }, face('b-front'), face('b-back'), face('b-left'), face('b-right')),
         el('span', { class: 'g3-lid' },
           face('l-top'), face('l-front'), face('l-back'), face('l-left'), face('l-right'),
-          el('span', { class: 'g3-bow' }, icon('bow', { size: 92 }))),
+          el('span', { class: 'g3-bow b1' }), el('span', { class: 'g3-bow b2' }), el('span', { class: 'g3-knot' })),
       ),
     ),
   );
 }
 
 /**
- * Le cadeau en plein écran, sur la nuit : on le touche, il se soulève et tremble, le
- * couvercle se lève, une lumière chaude sort de la boîte et le prénom apparaît.
+ * Le cadeau en 3D en plein écran, sur la nuit : on le touche, il tourne sur lui-même en
+ * grandissant, le couvercle s'envole, les paillettes jaillissent et le prénom sort du cadeau.
  */
 function openGiftOverlay(recipientName) {
   if (document.querySelector('.gift-overlay')) return;
@@ -263,6 +295,7 @@ function openGiftOverlay(recipientName) {
   const previous = document.activeElement;
   const reveal = el('div', { class: 'gift-reveal', 'aria-live': 'polite' });
   const confetti = el('div', { class: 'gift-confetti', 'aria-hidden': 'true' });
+  const sparks = el('div', { class: 'gift-burst', 'aria-hidden': 'true' });
   const box = giftBox('Ouvrir le cadeau pour découvrir à qui tu offres');
   const hint = el('p', { class: 'gift-hint' }, onComputer() ? 'Clique sur le cadeau pour l’ouvrir' : 'Touche le cadeau pour l’ouvrir');
   const later = el('button', { class: 'btn btn-ghost gift-later', type: 'button' }, 'Plus tard');
@@ -272,7 +305,7 @@ function openGiftOverlay(recipientName) {
   const panel = el('div', { class: 'gift-modal' },
     el('p', { class: 'eyebrow' }, 'Le tirage a eu lieu !'),
     el('h2', { id: 'gift-title' }, 'Découvre à qui tu offres un cadeau'),
-    el('div', { class: 'gift-stage' }, box, reveal),
+    el('div', { class: 'gift-stage' }, sparks, el('div', { class: 'gift-scale' }, box), reveal),
     hint,
     el('p', { class: 'gift-secret' }, 'Garde le secret : personne ne doit savoir que c’est toi !'),
     el('div', { class: 'gift-actions' }, later, next),
@@ -344,12 +377,21 @@ function openGiftOverlay(recipientName) {
       setTimeout(finish, 5000);
       return;
     }
-    // Il se soulève et tremble, le couvercle se lève, la lumière monte, puis le prénom.
-    panel.classList.add('opening');
-    setTimeout(() => panel.classList.add('opened'), 700);
-    setTimeout(() => foilConfetti(confetti), 800);
-    setTimeout(showNext, 1600);
-    setTimeout(finish, 5000);
+    // 1. Le cadeau tourne sur lui-même en grandissant jusqu'à remplir l'écran…
+    const size = box.offsetWidth || 240;
+    const big = Math.max(1.1, Math.min(2.2, (window.innerWidth * 0.86) / size, (window.innerHeight * 0.6) / size));
+    panel.querySelector('.gift-scale').style.setProperty('--big', String(big));
+    panel.classList.add('spinning');
+    // 2. … puis s'ouvre dans une explosion de paillettes, et le prénom sort du cadeau.
+    setTimeout(() => {
+      panel.classList.add('opening');
+      glitterBurst(sparks, 110);
+      burst(sparks, 24);
+      confettiRain(confetti);
+    }, 1450);
+    setTimeout(() => panel.classList.add('opened'), 1850);
+    setTimeout(showNext, 2600);
+    setTimeout(finish, 6000);
   });
   document.body.append(overlay);
   document.body.classList.add('gift-open');
