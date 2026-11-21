@@ -3,7 +3,7 @@
 # Offre gratuite : pas de disque persistant, les données sont donc chez Turso.
 services:
   - type: web
-    name: secret-santa
+    name: secretsanta987
     runtime: docker
     plan: free
     region: oregon
