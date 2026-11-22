@@ -1160,3 +1160,75 @@ test('liens personnels courts (ex. /noel/salome-j)', async () => {
   assert.equal((await go(`/p/${tokenOf('Kea')}`)).status, 200);
   assert.equal((await go('/static/app.css')).status, 200);
 });
+
+test('« en train d’écrire » : seulement l’autre personne de la conversation, en mémoire, expire seul', async () => {
+  const { admin, adminToken, view } = await createGroup(['Anna', 'Basile', 'Cyril', 'Dina']);
+  assert.equal((await admin('POST', `/api/admin/${adminToken}/draw`, { force: true })).status, 200);
+  const people = {};
+  for (const [i, p] of view.participants.entries()) {
+    const d = device();
+    const url = `/api/p/${p.token}`;
+    assert.equal((await d('POST', `${url}/enter`, { code: `31${i}${i}31` })).status, 200);
+    people[p.name] = { d, url, view: (await d('GET', url)).json };
+  }
+  const santaOf = Object.fromEntries(Object.entries(people).map(([n, x]) => [x.view.recipient.name, n]));
+  const typingOf = async (name) => {
+    const r = await people[name].d('GET', `${people[name].url}/messages`);
+    assert.equal(r.status, 200);
+    return r.json.typing;
+  };
+  const santa = santaOf.Anna;
+  const drawnAt = people.Anna.view.group.drawnAt;
+  const noOne = { santa: false, recipient: false };
+  for (const n of Object.keys(people)) assert.deepEqual(await typingOf(n), noOne);
+
+  // Le Père Noël d'Anna lui écrit : seule Anna le voit (côté « santa »)
+  let res = await people[santa].d('POST', `${people[santa].url}/typing`, { conv: 'recipient', typing: true, drawnAt });
+  assert.equal(res.status, 200);
+  assert.deepEqual(res.json, { ok: true });
+  assert.deepEqual(await typingOf('Anna'), { santa: true, recipient: false });
+  assert.deepEqual(await typingOf(santa), noOne, 'on ne se voit pas soi-même écrire');
+  for (const n of Object.keys(people)) {
+    if (n === 'Anna' || n === santa) continue;
+    assert.deepEqual(await typingOf(n), noOne, `${n} ne doit rien savoir`);
+  }
+  // Arrêt explicite
+  await people[santa].d('POST', `${people[santa].url}/typing`, { conv: 'recipient', typing: false });
+  assert.deepEqual(await typingOf('Anna'), noOne);
+
+  // Anna répond à son Père Noël : seul lui le voit (côté « recipient »)
+  await people.Anna.d('POST', `${people.Anna.url}/typing`, { conv: 'santa', typing: true, drawnAt });
+  assert.deepEqual(await typingOf(santa), { santa: false, recipient: true });
+  assert.deepEqual(await typingOf('Anna'), noOne);
+  for (const n of Object.keys(people)) {
+    if (n === 'Anna' || n === santa) continue;
+    assert.deepEqual(await typingOf(n), noOne, `${n} ne doit rien savoir`);
+  }
+  // Rien dans la réponse ne trahit qui écrit
+  const raw = (await people.Anna.d('GET', `${people.Anna.url}/messages`)).text;
+  for (const secret of [santa, people[santa].view.me?.id].filter(Boolean)) assert.ok(!raw.includes(secret));
+
+  // Expiration après ~6 s sans nouveau signal
+  clock += 5000;
+  assert.equal((await typingOf(santa)).recipient, true);
+  clock += 1500;
+  assert.deepEqual(await typingOf(santa), noOne);
+
+  // Le message envoyé arrête l'indicateur aussitôt
+  await people.Anna.d('POST', `${people.Anna.url}/typing`, { conv: 'santa', typing: true });
+  assert.equal((await typingOf(santa)).recipient, true);
+  assert.equal((await people.Anna.d('POST', `${people.Anna.url}/messages`, { conv: 'santa', body: 'Merci !' })).status, 201);
+  assert.deepEqual(await typingOf(santa), noOne);
+
+  // Ancien tirage (drawnAt périmé) : ignoré ; conversation invalide : 400
+  await people.Anna.d('POST', `${people.Anna.url}/typing`, { conv: 'santa', typing: true, drawnAt: drawnAt - 1 });
+  assert.deepEqual(await typingOf(santa), noOne);
+  assert.equal((await people.Anna.d('POST', `${people.Anna.url}/typing`, { conv: 'autre', typing: true })).status, 400);
+
+  // Sans session (ou avec le cookie d'un autre) : 401, et rien n'est enregistré
+  const intruder = device();
+  assert.equal((await intruder('POST', `${people.Anna.url}/typing`, { conv: 'santa', typing: true })).status, 401);
+  assert.equal((await people.Basile.d('POST', `${people.Anna.url}/typing`, { conv: 'santa', typing: true })).status, 401);
+  assert.deepEqual(await typingOf(santa), noOne);
+  assert.equal((await intruder('GET', `${people.Anna.url}/messages`)).status, 401);
+});

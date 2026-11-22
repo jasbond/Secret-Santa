@@ -1305,6 +1305,58 @@ export async function createStore(target = ':memory:', { now = () => Date.now() 
     });
   }
 
+  // --- « En train d'écrire » ----------------------------------------------------
+  // Uniquement en mémoire (jamais en base) : un signal éphémère qui expire seul.
+  // Clé = conversation (groupe, tirage, donneur) + côté qui écrit (1 = le Père Noël).
+  const TYPING_TTL_MS = 6000;
+  const TYPING_MAX = 5000;
+  const typing = new Map();
+  const typingKey = (groupId, drawnAt, giverId, fromSanta) => `${groupId}:${drawnAt}:${giverId}:${fromSanta ? 1 : 0}`;
+  function pruneTyping() {
+    const t = now();
+    for (const [k, exp] of typing) if (exp <= t) typing.delete(k);
+    // Toujours borné : on oublie les plus anciens (ordre d'insertion).
+    while (typing.size > TYPING_MAX) typing.delete(typing.keys().next().value);
+  }
+
+  /** Signale (ou arrête) « en train d'écrire » dans une conversation du participant. */
+  async function setTyping(participant, rawConv, on, drawnAt = undefined) {
+    const conv = cleanConv(rawConv);
+    const g = await db.get('SELECT drawn_at FROM groups WHERE id = ?', participant.group_id);
+    if (!g?.drawn_at) return false;
+    if (drawnAt !== undefined && drawnAt !== null && drawnAt !== g.drawn_at) return false;
+    const giverId = conv === 'recipient' ? participant.id : await santaIdOf(participant.id);
+    if (!giverId) return false;
+    const key = typingKey(participant.group_id, g.drawn_at, giverId, conv === 'recipient');
+    typing.delete(key);
+    if (on) {
+      typing.set(key, now() + TYPING_TTL_MS);
+      if (typing.size > TYPING_MAX / 2) pruneTyping();
+    }
+    return true;
+  }
+
+  /** L'autre personne de chaque conversation est-elle en train d'écrire ? (rien d'autre) */
+  async function typingStatus(participant) {
+    const out = { santa: false, recipient: false };
+    if (!typing.size) return out;
+    const g = await db.get('SELECT drawn_at FROM groups WHERE id = ?', participant.group_id);
+    if (!g?.drawn_at) return out;
+    const t = now();
+    const alive = (key) => {
+      const exp = typing.get(key);
+      if (exp === undefined) return false;
+      if (exp <= t) { typing.delete(key); return false; }
+      return true;
+    };
+    // Mon Père Noël écrit dans SA conversation « recipient » (donneur = lui, côté Père Noël).
+    const santaId = await santaIdOf(participant.id);
+    if (santaId) out.santa = alive(typingKey(participant.group_id, g.drawn_at, santaId, true));
+    // La personne à qui j'offre écrit dans MA conversation (donneur = moi, côté receveur).
+    out.recipient = alive(typingKey(participant.group_id, g.drawn_at, participant.id, false));
+    return out;
+  }
+
   async function markRead(participant, rawConv, lastId) {
     if (!Number.isSafeInteger(lastId) || lastId < 0) throw new HttpError(400, 'Identifiant invalide.');
     const conv = cleanConv(rawConv);
@@ -1367,6 +1419,8 @@ export async function createStore(target = ':memory:', { now = () => Date.now() 
     listMessages,
     postMessage,
     markRead,
+    setTyping,
+    typingStatus,
     setGiftStatus,
     markGiftOpened,
     organiserEnter,

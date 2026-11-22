@@ -404,10 +404,18 @@ export function createApp({
     })],
     ['GET', /^\/api\/p\/([^/]+)\/messages$/, participant(async ({ p, req, res }) => {
       const after = Number(new URL(req.url, 'http://x').searchParams.get('after') || 0);
-      sendJson(res, 200, { messages: await store.listMessages(p, after) });
+      const messages = await store.listMessages(p, after);
+      sendJson(res, 200, { messages, typing: await store.typingStatus(p) });
+    })],
+    // « En train d'écrire » : signal éphémère, gardé en mémoire seulement (voir store.setTyping).
+    ['POST', /^\/api\/p\/([^/]+)\/typing$/, participant(async ({ p, body, res }) => {
+      await store.setTyping(p, body.conv, body.typing === true, body.drawnAt);
+      sendJson(res, 200, { ok: true });
     })],
     ['POST', /^\/api\/p\/([^/]+)\/messages$/, participant(async ({ p, body, res }) => {
       const message = await store.postMessage(p, body.conv, body.body, body.drawnAt);
+      // Message parti : l'indicateur « en train d'écrire » s'arrête tout de suite.
+      await store.setTyping(p, body.conv, false).catch(() => {});
       // Prévient l'autre personne, sans jamais révéler qui écrit ni le contenu.
       if (body.conv === 'recipient') {
         notify(await store.messageTarget(p, 'recipient'), {

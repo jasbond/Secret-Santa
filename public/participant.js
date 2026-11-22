@@ -1,4 +1,4 @@
-import { api, el, clear, toast, withButton, tokenFromPath, formatDate, formatTime, linkify, ask, storage, downloadLink, frTypo, eventName, pageTitle, isBrandName, onComputer } from './common.js';
+import { api, el, clear, toast, withButton, tokenFromPath, formatDate, formatTime, linkify, ask, storage, downloadLink, frTypo, eventName, pageTitle, isBrandName, onComputer, copyText } from './common.js';
 import { prepareImage, renderGallery } from './album.js';
 
 const token = tokenFromPath();
@@ -6,6 +6,9 @@ const base = `/api/p/${encodeURIComponent(token)}`;
 const root = document.getElementById('app');
 
 const MESSAGE_POLL_MS = 4000;
+const OPEN_CHAT_POLL_MS = 2000; // discussion ouverte : plus souvent, pour « … est en train d'écrire »
+const TYPING_SEND_MS = 2500; // au plus un signal « j'écris » toutes les 2,5 s
+const TYPING_SHOW_MS = 7000; // sans nouvelle du serveur, l'indicateur s'efface seul
 const STATE_POLL_MS = 20000;
 
 let state = null;
@@ -13,14 +16,28 @@ let chat = null; // état de la messagerie, créé après le tirage
 let pollTimer = null;
 let lastStatePoll = 0;
 let polling = false;
+let lastMessagePoll = 0;
 let renderedDrawnAt; // drawnAt du tirage affiché à l'écran
 let renderedRevealed; // révélation affichée à l'écran
 let failedAttemptsNotice = 0; // essais ratés signalés à la connexion, jusqu'à ce que le participant les ait vus
 let codeCreatedNotice = false; // code tout juste choisi : rappel de bien le retenir
 let wishlistDraft = null; // brouillon de lettre non enregistré, gardé même quand la carte est cachée (révélation)
+let letterFocusExit = null; // lettre au premier plan (mode concentration) : fonction pour en sortir
 let unwrapping = false; // animation d'ouverture du cadeau en cours
 let currentTab = null; // onglet affiché (« tirage », « lettre », « salettre », « messages »…), gardé dans l'adresse (#lettre)
 let revealOpened = 0; // nombre de cadeaux déjà ouverts dans l'animation de révélation
+// Arrivée par le lien du guide (?notifs=1 : Safari, Chrome, écran d'accueil) : utile une seule fois par appareil.
+// L'icône de l'écran d'accueil garde cette adresse pour toujours : ensuite, visite normale (question du cadeau, onglet par défaut).
+let arrivedForNotifs = (() => {
+  const params = new URLSearchParams(location.search);
+  if (!params.has('notifs')) return false;
+  const first = !storage.get(`ss_notif_asked_${token}`, false);
+  params.delete('notifs');
+  const search = params.toString();
+  const hash = first || location.hash !== '#messages' ? location.hash : '';
+  history.replaceState(history.state, '', `${location.pathname}${search ? `?${search}` : ''}${hash}`);
+  return first;
+})();
 let revealTimer = null;
 let lastInfoKey = null; // évite de redessiner (et de perdre le focus) quand rien n'a changé
 let pendingFocusKey = null; // élément à refocaliser au prochain rendu (après un clic)
@@ -306,6 +323,7 @@ function openGiftOverlay(recipientName) {
       giftOverlayDismissed = true;
       close();
       document.querySelector('[data-focus-key="gift-open"]')?.focus();
+      if (codeCreatedNotice) maybeProposeNotifications(); // fin des écrans de la première connexion
     }
   };
   later.addEventListener('click', () => onKey({ key: 'Escape' }));
@@ -334,6 +352,8 @@ function openGiftOverlay(recipientName) {
       tag.focus({ preventScroll: true });
       tag.scrollIntoView({ block: 'center', behavior: reduce ? 'auto' : 'smooth' });
     } else if (previous?.isConnected) previous.focus();
+    // Première connexion : la proposition de notifications, une fois l'étiquette arrivée.
+    if (codeCreatedNotice) setTimeout(maybeProposeNotifications, reduce ? 600 : 1800);
   };
   box.addEventListener('click', () => {
     if (unwrapping) return;
@@ -892,8 +912,10 @@ function renderMain() {
   const { group, me } = state;
   // Tirage refait pendant que le cadeau était affiché : on referme le plein écran (il se rouvre avec le bon prénom).
   // (La liste de souhaits plein écran, elle, reste ouverte : on ne perd pas ce qui est en cours d'écriture.)
-  if (!unwrapping && document.querySelector('.gift-overlay:not(.wish-overlay):not(.dates-overlay)')) {
-    document.querySelector('.gift-overlay:not(.wish-overlay):not(.dates-overlay)').remove();
+  // (Les fenêtres des notifications restent aussi : le cadeau s'ouvrira quand on les ferme.)
+  const replaced = '.gift-overlay:not(.wish-overlay):not(.dates-overlay):not(.notif-overlay)';
+  if (!unwrapping && document.querySelector(replaced)) {
+    document.querySelector(replaced).remove();
     root.inert = false;
     document.body.classList.remove('gift-open');
   }
@@ -903,6 +925,7 @@ function renderMain() {
   resetRevealAnimation();
 
   // Si la page est reconstruite (tirage refait), on garde le brouillon de liste de souhaits.
+  letterFocusExit?.({ restore: false }); // la lettre au premier plan se referme (la carte est recréée)
   const previousInput = document.getElementById('wishlist-input');
   // Sans la carte (après révélation), on garde le dernier brouillon : il revient si la révélation est annulée.
   if (previousInput) wishlistDraft = previousInput.dataset.dirty === '1' ? previousInput.value : null;
@@ -951,6 +974,8 @@ function renderMain() {
       countdown(),
     ),
     el('nav', { class: 'quickbar', id: 'quickbar', 'aria-label': 'Raccourcis', hidden: true }),
+    // Téléphone : conseil (une fois) pour ouvrir la page en plein écran depuis l'écran d'accueil.
+    fullscreenTip(),
     // Avertissements de sécurité : visibles quel que soit l'onglet.
     failedNotice(),
     createdNotice(),
@@ -981,15 +1006,22 @@ function renderMain() {
   // On relit l'état à jour : le tirage a pu avoir lieu pendant les écrans d'accueil.
   const giftPending = () => state.group.drawn && !isUnwrapped() && !giftOverlayDismissed && state.recipient;
   const openGiftIfPending = () => { if (giftPending()) openGiftOverlay(state.recipient.name); };
+  // Fin des écrans d'accueil : le cadeau s'il attend, sinon la proposition de notifications.
+  const afterWelcome = () => { if (giftPending()) openGiftIfPending(); else maybeProposeNotifications(); };
   if (codeCreatedNotice && !onboardingDone && !group.revealed) {
     // Toute première connexion : calendrier, puis lettre au Père Noël, puis le cadeau (si le tirage a eu lieu).
     onboardingDone = true;
     openDatesOverlay(() => {
-      if (!wishlistPromptDone && !state.me.wishlist && !exchangeReached()) openWishlistOverlay(openGiftIfPending);
-      else openGiftIfPending();
+      if (!wishlistPromptDone && !state.me.wishlist && !exchangeReached()) openWishlistOverlay(afterWelcome);
+      else afterWelcome();
     });
   } else if (giftPending()) openGiftIfPending();
-  else maybeAskGiftStatus();
+  else if (arrivedForNotifs) {
+    // Arrivée par le lien du guide (Safari, Chrome, écran d'accueil) : on venait pour les notifications.
+    arrivedForNotifs = false;
+    skipStatusThisVisit();
+    maybeProposeNotifications({ fromLink: true });
+  } else maybeAskGiftStatus();
   if (group.drawn && !isUnwrapped()) {
     // Les discussions montrent le prénom : elles apparaissent une fois le cadeau ouvert.
     chat = null;
@@ -1112,7 +1144,13 @@ async function renderAlbum(focusKey = null) {
 
 const pushSupported = () => 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window;
 const isIOS = () => /iP(hone|ad|od)/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
-const isStandalone = () => window.matchMedia?.('(display-mode: standalone)').matches || navigator.standalone === true;
+// Ouverte depuis l'écran d'accueil (appli installée), en « standalone » ou en plein écran.
+const isStandalone = () => window.matchMedia?.('(display-mode: standalone), (display-mode: fullscreen)').matches || navigator.standalone === true;
+/** Navigateur intégré à Messenger, Facebook ou Instagram : pas de notifications possibles. */
+const inAppBrowser = () => /FBAN|FBAV|FB_IAB|Messenger|Instagram/i.test(navigator.userAgent);
+const isAndroid = () => /Android/i.test(navigator.userAgent);
+/** Un simple bouton ne suffit pas : iPhone sans l'appli installée, ou navigateur de Messenger. */
+const needsNotifGuide = () => (isIOS() && !isStandalone()) || inAppBrowser();
 
 function base64UrlToBytes(value) {
   const padded = value.replace(/-/g, '+').replace(/_/g, '/') + '='.repeat((4 - (value.length % 4)) % 4);
@@ -1178,19 +1216,18 @@ async function renderNotifCard() {
   const box = document.getElementById('notif-card');
   if (!box) return;
   const card = (...children) => el('section', { class: 'card notif' }, el('h2', {}, '🔔 Notifications'), ...children);
+  // iPhone sans l'appli installée, ou navigateur de Messenger : un guide pas à pas.
+  if (needsNotifGuide()) {
+    clear(box, card(
+      el('p', {}, isIOS() && !inAppBrowser()
+        ? "Sois prévenu·e dès que ton Père Noël secret t'écrit. Sur iPhone, il faut d'abord ajouter la page à ton écran d'accueil : on t'explique en 3 étapes."
+        : "Sois prévenu·e dès que ton Père Noël secret t'écrit. Le navigateur de Messenger ne peut pas recevoir de notifications : on t'explique comment faire."),
+      el('button', { class: 'btn btn-primary', type: 'button', onclick: () => openNotifGuide() }, '🔔 Activer les notifications'),
+    ));
+    return;
+  }
   if (!pushSupported()) {
-    if (isIOS() && !isStandalone()) {
-      clear(box, card(
-        el('p', {}, "Pour être prévenu·e quand ton Père Noël secret t'écrit, installe d'abord l'appli sur ton iPhone :"),
-        el('ol', { class: 'notif-steps' },
-          el('li', {}, 'Appuie sur le bouton ', el('strong', {}, 'Partager'), ' de Safari (le carré avec une flèche).'),
-          el('li', {}, 'Choisis ', el('strong', {}, '« Sur l’écran d’accueil »'), '.'),
-          el('li', {}, "Ouvre l'appli 🎁 depuis ton écran d'accueil, puis reviens ici pour activer les notifications."),
-        ),
-      ));
-    } else {
-      clear(box, card(el('p', { class: 'muted' }, 'Ce navigateur ne permet pas les notifications. Pense à revenir voir tes messages de temps en temps !')));
-    }
+    clear(box, card(el('p', { class: 'muted' }, 'Ce navigateur ne permet pas les notifications. Pense à revenir voir tes messages de temps en temps !')));
     return;
   }
   if (Notification.permission === 'denied') {
@@ -1215,6 +1252,319 @@ async function renderNotifCard() {
     el('p', {}, "Sois prévenu·e dès que ton Père Noël secret t'écrit (sans que personne d'autre ne voie le message)."),
     el('button', { class: 'btn btn-primary', type: 'button', onclick: (e) => enableNotifications(e.currentTarget) }, '🔔 Activer les notifications'),
   ));
+}
+
+// --- Guide pas à pas (iPhone, Messenger) et proposition au bon moment ---------
+
+/** Adresse à ouvrir ailleurs (Safari, Chrome, écran d'accueil) : elle mène droit aux notifications. */
+const notifLink = () => `${location.origin}${location.pathname}?notifs=1#messages`;
+/** Android : ouvre cette page dans Chrome depuis le navigateur de Messenger. */
+const chromeIntent = () => `intent://${location.host}${location.pathname}?notifs=1#Intent;scheme=https;package=com.android.chrome;end`;
+const notifAskedKey = () => `ss_notif_asked_${token}`;
+let notifProposed = false; // déjà proposé pendant cette visite
+
+/** Petits dessins des boutons de Safari (SVG fixes, sans aucune donnée de la page). */
+const SVG = {
+  share: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8.5 9.5H7a1.5 1.5 0 0 0-1.5 1.5v8A1.5 1.5 0 0 0 7 20.5h10a1.5 1.5 0 0 0 1.5-1.5v-8A1.5 1.5 0 0 0 17 9.5h-1.5"/><path d="M12 3.5v10.5"/><path d="M8.5 7 12 3.5 15.5 7"/></svg>',
+  add: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><rect x="4" y="4" width="16" height="16" rx="4"/><path d="M12 8.5v7M8.5 12h7"/></svg>',
+  copy: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="8" y="8" width="12" height="12" rx="2.5"/><path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2"/></svg>',
+  star: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" aria-hidden="true"><path d="m12 4 2.4 5 5.4.6-4 3.7 1.1 5.4L12 16l-4.9 2.7 1.1-5.4-4-3.7 5.4-.6z"/></svg>',
+  compass: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="8.5"/><path d="m15.5 8.5-2 5-5 2 2-5z"/></svg>',
+};
+const svg = (name, cls = '') => {
+  const span = el('span', { class: `ng-ico ${cls}`.trim() });
+  span.innerHTML = SVG[name];
+  return span;
+};
+
+/** Une étape du guide : le dessin, puis la consigne. */
+const guideStep = (num, art, ...text) => el('li', { class: 'ng-step' },
+  el('div', { class: 'ng-art', 'aria-hidden': 'true' }, art),
+  el('div', { class: 'ng-text' }, el('span', { class: 'ng-num', 'aria-hidden': 'true' }, String(num)), el('p', {}, ...text)),
+);
+
+/** Dessin : la barre du bas de Safari, bouton Partager entouré. */
+const artSafariBar = () => el('div', { class: 'ng-phone ng-bar' },
+  el('span', { class: 'ng-dim' }, '‹'), el('span', { class: 'ng-dim' }, '›'),
+  el('span', { class: 'ng-hl' }, svg('share')),
+  el('span', { class: 'ng-dim ng-dots' }, '•••'),
+);
+/** Dessin : le menu Partager, ligne « Sur l'écran d'accueil » entourée. */
+const artShareSheet = () => el('div', { class: 'ng-phone ng-sheet' },
+  el('span', { class: 'ng-row ng-dim' }, svg('copy'), 'Copier'),
+  el('span', { class: 'ng-row ng-dim' }, svg('star'), 'Ajouter aux favoris'),
+  el('span', { class: 'ng-row ng-hl' }, svg('add'), 'Sur l’écran d’accueil'),
+);
+/** Dessin : l'écran d'accueil avec l'icône 🎁, puis le bouton « Activer ». */
+const artHomeScreen = () => el('div', { class: 'ng-phone ng-home' },
+  el('span', { class: 'ng-apps' },
+    el('span', { class: 'ng-app' }), el('span', { class: 'ng-app' }),
+    el('span', { class: 'ng-app ng-hl ng-mine' }, el('img', { src: '/static/apple-touch-icon.png', alt: '' }), el('small', {}, 'Père Noël')),
+  ),
+  el('span', { class: 'ng-arrow' }, '➜'),
+  el('span', { class: 'ng-fakebtn ng-hl' }, '🔔 Activer'),
+);
+/** Dessin : le menu « ••• » du navigateur de Messenger, « Ouvrir dans … » entouré. */
+const artInAppMenu = (browser) => el('div', { class: 'ng-phone ng-sheet' },
+  el('span', { class: 'ng-row ng-top' }, el('span', { class: 'ng-dim' }, '✕'), el('span', { class: 'ng-hl ng-dots' }, '•••')),
+  el('span', { class: 'ng-row ng-hl' }, svg('compass'), `Ouvrir dans ${browser}`),
+);
+
+/** « Copier le lien » : la solution de secours quand le menu de Messenger ne propose rien. */
+function copyLinkBlock(browser) {
+  const field = el('input', { class: 'ng-link', type: 'text', readonly: true, value: notifLink(), 'aria-label': 'Lien de ta page', hidden: true });
+  const btn = el('button', {
+    class: 'btn btn-small ng-copy', type: 'button',
+    onclick: async () => {
+      if (await copyText(notifLink())) toast(`Lien copié ! Colle-le dans ${browser}.`, 'success');
+      else {
+        field.hidden = false;
+        field.select();
+        toast('Copie impossible : appuie longuement sur le lien pour le copier.', 'error');
+      }
+    },
+  }, svg('copy'), 'Copier le lien');
+  return el('div', { class: 'ng-fallback' },
+    el('p', { class: 'muted small' }, `Ça ne marche pas ? Copie le lien, puis colle-le dans la barre d’adresse de ${browser}.`),
+    btn, field);
+}
+
+/** Fenêtre plein écran des notifications (une seule à la fois, comme les autres). */
+function notifOverlay(cls, panel, labelId, onClose) {
+  const overlay = el('div', { class: `gift-overlay notif-overlay ${cls}`, role: 'dialog', 'aria-modal': 'true', 'aria-labelledby': labelId }, panel);
+  const previous = document.activeElement;
+  const onKey = (e) => { if (e.key === 'Escape' && !document.querySelector('dialog[open]')) close(); };
+  function close({ then } = {}) {
+    if (!overlay.isConnected) return;
+    overlay.remove();
+    document.removeEventListener('keydown', onKey);
+    if (then) { then(); return; } // une autre fenêtre prend la suite (proposition ➜ guide)
+    if (!document.querySelector('.gift-overlay')) { root.inert = false; document.body.classList.remove('gift-open'); }
+    if (previous?.isConnected) previous.focus({ preventScroll: true });
+    onClose?.();
+  }
+  document.addEventListener('keydown', onKey);
+  document.body.append(overlay);
+  document.body.classList.add('gift-open');
+  root.inert = true;
+  const title = panel.querySelector(`#${labelId}`);
+  title.setAttribute('tabindex', '-1');
+  title.focus({ preventScroll: true });
+  return close;
+}
+
+/** Le tirage a eu lieu pendant qu'on lisait : le cadeau à ouvrir passe ensuite. */
+function giftAfterNotif() {
+  if (document.querySelector('.gift-overlay') || unwrapping) return;
+  if (state?.authenticated && state.group.drawn && state.recipient && !isUnwrapped() && !giftOverlayDismissed) openGiftOverlay(state.recipient.name);
+}
+
+/**
+ * Guide plein écran : sur iPhone, Apple n'envoie de notifications qu'aux sites ajoutés à
+ * l'écran d'accueil ; dans Messenger, il faut d'abord ouvrir la page dans Safari ou Chrome.
+ */
+function openNotifGuide({ fullscreen = false } = {}) {
+  if (document.querySelector('.gift-overlay')) return;
+  // Déjà vu sur cet appareil : pas besoin de le reproposer (Safari, l'écran d'accueil et Chrome ont leur propre mémoire).
+  notifProposed = true;
+  storage.set(notifAskedKey(), true);
+  const ios = isIOS();
+  const inApp = inAppBrowser();
+  const android = !ios && isAndroid();
+  // Le lien gardé par Safari, l'écran d'accueil ou « Ouvrir dans Safari » mène droit aux notifications.
+  if (ios || inApp) history.replaceState(history.state, '', `${location.pathname}?notifs=1#messages`);
+  const closeX = el('button', { class: 'wish-close', type: 'button', 'aria-label': 'Fermer' }, '✕');
+  const done = el('button', { class: 'btn btn-ghost btn-block notif-later', type: 'button' }, 'Plus tard');
+  const browser = ios ? 'Safari' : android ? 'Chrome' : 'ton navigateur';
+  const safariSteps = (from) => [
+    guideStep(from, artSafariBar(),
+      'Dans Safari, touche le bouton ', el('strong', {}, 'Partager'), ' (le carré avec une flèche), en bas de l’écran. Tu ne le vois pas ? Il est dans le menu « ••• ».'),
+    guideStep(from + 1, artShareSheet(),
+      'Descends un peu et choisis ', el('strong', {}, '« Sur l’écran d’accueil »'), ', puis ', el('strong', {}, '« Ajouter »'), '.'),
+    guideStep(from + 2, artHomeScreen(),
+      ...(fullscreen
+        ? ['Ouvre l’appli 🎁 ', el('strong', {}, 'Père Noël'), ' depuis ton écran d’accueil\u00a0: elle s’ouvre en plein écran. Profites-en pour activer les notifications\u00a0! (Il faudra peut-être retaper ton code secret.)']
+        : ['Ouvre l’appli 🎁 ', el('strong', {}, 'Père Noël'), ' depuis ton écran d’accueil et touche ', el('strong', {}, '« Activer les notifications »'), '. (Il faudra peut-être retaper ton code secret.)'])),
+  ];
+  let title;
+  let intro;
+  let steps;
+  let extra = null;
+  if (ios && inApp) {
+    title = '🔔 D’abord, ouvre la page dans Safari';
+    intro = 'Tu es dans le navigateur de Messenger : il ne peut pas recevoir de notifications. Sur iPhone, ça marche depuis Safari, en 4 petites étapes.';
+    steps = [
+      el('li', { class: 'ng-step' },
+        el('div', { class: 'ng-art', 'aria-hidden': 'true' }, artInAppMenu('Safari')),
+        el('div', { class: 'ng-text' }, el('span', { class: 'ng-num', 'aria-hidden': 'true' }, '1'),
+          el('p', {}, 'Touche ', el('strong', {}, '« ••• »'), ' (ou le bouton boussole de Safari, en bas), puis ', el('strong', {}, '« Ouvrir dans Safari »'), '.'))),
+      ...safariSteps(2),
+    ];
+    extra = copyLinkBlock('Safari');
+    if (fullscreen) {
+      title = '📲 D’abord, ouvre la page dans Safari';
+      intro = 'Le navigateur de Messenger garde toujours ses barres. Depuis Safari, ajoute la page à ton écran d’accueil\u00a0: elle s’ouvrira en plein écran, comme une appli. 4 petites étapes\u00a0:';
+    }
+  } else if (ios && fullscreen) {
+    title = '📲 En plein écran, comme une appli';
+    intro = 'Ajoute la page à ton écran d’accueil\u00a0: elle s’ouvrira en plein écran, sans la barre d’adresse ni les boutons de Safari. Ça prend 30 secondes\u00a0:';
+    steps = safariSteps(1);
+  } else if (ios) {
+    title = '🔔 Les notifications sur iPhone';
+    intro = 'Apple n’envoie les notifications qu’aux sites ajoutés à l’écran d’accueil. Ça prend 30 secondes :';
+    steps = safariSteps(1);
+  } else {
+    title = `${fullscreen ? '📲' : '🔔'} D’abord, ouvre la page dans ${browser}`;
+    intro = fullscreen
+      ? 'Tu es dans le navigateur de Messenger\u00a0: il garde toujours sa barre en haut.'
+      : 'Tu es dans le navigateur de Messenger : il ne peut pas recevoir de notifications.';
+    steps = [];
+    extra = el('div', { class: 'ng-open' },
+      android ? el('a', { class: 'btn btn-primary btn-block ng-chrome', href: chromeIntent() }, '🌐 Ouvrir dans Chrome') : null,
+      el('p', { class: 'muted small' }, android && fullscreen
+        ? 'Dans Chrome, touche le menu «\u00a0⋮\u00a0» puis «\u00a0Ajouter à l’écran d’accueil\u00a0»\u00a0: la page s’ouvrira en plein écran, comme une appli. (Il faudra peut-être retaper ton code secret.)'
+        : android
+        ? 'Dans Chrome, touche « Activer les notifications ». (Il faudra peut-être retaper ton code secret.)'
+        : 'Ouvre ce lien dans ton navigateur habituel, puis touche « Activer les notifications ».'),
+      copyLinkBlock(browser),
+    );
+  }
+  const panel = el('div', { class: 'notif-modal notif-guide card' },
+    closeX,
+    el('p', { class: 'eyebrow' }, fullscreen ? 'Plein écran' : 'Notifications'),
+    el('h2', { id: 'notif-guide-title' }, title),
+    el('p', { class: 'muted' }, intro),
+    steps.length ? el('ol', { class: 'ng-steps' }, steps) : null,
+    extra,
+    ios ? el('p', { class: 'ng-bonus' }, fullscreen
+      ? '🔔 Bonus\u00a0: depuis l’écran d’accueil, tu pourras aussi recevoir une notification quand ton Père Noël secret t’écrit.'
+      : '✨ Bonus : depuis l’écran d’accueil, la page s’ouvre en plein écran, comme une vraie appli, sans la barre d’adresse.') : null,
+    done,
+  );
+  const close = notifOverlay('notif-guide-overlay', panel, 'notif-guide-title', giftAfterNotif);
+  closeX.addEventListener('click', () => close());
+  done.addEventListener('click', () => close());
+}
+
+// --- Plein écran sur téléphone -------------------------------------------------
+// Une page web ne peut pas cacher elle-même la barre d'adresse de Safari ou de Messenger :
+// ajoutée à l'écran d'accueil, elle s'ouvre en plein écran, comme une appli (voir le manifeste).
+// Un petit conseil, une seule fois par appareil, tant qu'on n'est pas dans l'appli installée.
+
+const FS_TIP_KEY = 'ss_fs_tip_done';
+let installPrompt = null; // Android Chrome : proposition d'installation gardée pour le bouton
+window.addEventListener('beforeinstallprompt', (e) => {
+  e.preventDefault();
+  installPrompt = e;
+  refreshFullscreenTip();
+});
+window.addEventListener('appinstalled', () => { installPrompt = null; storage.set(FS_TIP_KEY, true); document.getElementById('fs-tip')?.remove(); });
+
+const onPhone = () => !onComputer() && (isIOS() || isAndroid());
+/** Plein écran « à la demande » : Android, dans Chrome (pas dans Messenger). */
+const canFullscreenNow = () => isAndroid() && !inAppBrowser() && document.fullscreenEnabled === true && typeof document.documentElement.requestFullscreen === 'function';
+
+function fullscreenTip() {
+  if (!onPhone() || isStandalone() || storage.get(FS_TIP_KEY, false)) return null;
+  return el('section', { class: 'card fs-tip', id: 'fs-tip', 'aria-label': 'Plein écran' }, ...fullscreenTipContent());
+}
+
+function fullscreenTipContent() {
+  const done = () => { storage.set(FS_TIP_KEY, true); document.getElementById('fs-tip')?.remove(); };
+  const actions = [];
+  if (isIOS() || inAppBrowser()) {
+    actions.push(el('button', { class: 'btn btn-small btn-primary', type: 'button', onclick: () => { done(); openNotifGuide({ fullscreen: true }); } }, 'Comment faire\u00a0?'));
+  } else if (installPrompt) {
+    actions.push(el('button', {
+      class: 'btn btn-small btn-primary', type: 'button',
+      onclick: async () => {
+        const prompt = installPrompt;
+        installPrompt = null;
+        try {
+          await prompt.prompt();
+          const { outcome } = await prompt.userChoice;
+          if (outcome === 'accepted') done();
+        } catch { /* le navigateur a refusé : le conseil reste */ }
+        refreshFullscreenTip();
+      },
+    }, '📲 Ajouter à l’écran d’accueil'));
+  }
+  if (canFullscreenNow()) {
+    const inFs = Boolean(document.fullscreenElement);
+    actions.push(el('button', {
+      class: 'btn btn-small fs-now', type: 'button',
+      onclick: () => {
+        if (document.fullscreenElement) document.exitFullscreen?.().catch(() => {});
+        else document.documentElement.requestFullscreen({ navigationUI: 'hide' }).catch(() => toast('Plein écran impossible dans ce navigateur.', 'error'));
+      },
+    }, inFs ? 'Quitter le plein écran' : '⛶ Plein écran'));
+  }
+  const android = isAndroid() && !inAppBrowser();
+  return [
+    el('button', { class: 'fs-tip-close', type: 'button', 'aria-label': 'Fermer le conseil', onclick: done }, '✕'),
+    el('p', {}, '📲 ', el('strong', {}, 'Ajoute la page à ton écran d’accueil'), '\u00a0: elle s’ouvrira en plein écran, comme une appli, sans la barre d’adresse.'),
+    android && !installPrompt ? el('p', { class: 'muted small' }, 'Dans Chrome\u00a0: menu «\u00a0⋮\u00a0» puis «\u00a0Ajouter à l’écran d’accueil\u00a0».') : null,
+    android && canFullscreenNow() ? el('p', { class: 'muted small' }, 'Ou passe en plein écran tout de suite (jusqu’à ce que tu quittes la page).') : null,
+    actions.length ? el('div', { class: 'fs-tip-actions' }, actions) : null,
+  ];
+}
+
+function refreshFullscreenTip() {
+  const box = document.getElementById('fs-tip');
+  if (box) clear(box, ...fullscreenTipContent());
+}
+document.addEventListener('fullscreenchange', refreshFullscreenTip);
+
+/** Proposition plein écran, une seule fois par appareil, juste après les écrans d'accueil. */
+function openNotifProposal() {
+  if (document.querySelector('.gift-overlay')) return;
+  const yes = el('button', { class: 'btn btn-primary btn-block notif-yes', type: 'button' }, '🔔 Activer les notifications');
+  const later = el('button', { class: 'btn btn-ghost btn-block notif-later', type: 'button' }, 'Plus tard');
+  const panel = el('div', { class: 'notif-modal card' },
+    el('div', { class: 'np-art', 'aria-hidden': 'true' },
+      el('span', { class: 'np-bell' }, '🔔'),
+      el('span', { class: 'np-bubble' },
+        el('img', { src: '/static/icon-192.png', alt: '' }),
+        el('span', {}, el('strong', {}, 'Ton Père Noël secret t’a écrit !'), el('small', {}, 'Ouvre ta page pour lire son message.')))),
+    el('h2', { id: 'notif-title' }, 'Recevoir une notification quand ton Père Noël secret t’écrit ?'),
+    el('p', { class: 'muted' }, `Tu sauras aussi quand ${state.group.drawn ? 'la grande révélation' : 'le tirage'} a lieu. Le contenu des messages n’apparaît jamais dans la notification.`),
+    el('div', { class: 'wish-actions' }, yes, later),
+    el('p', { class: 'muted small' }, 'Tu pourras changer d’avis dans l’onglet « 💬\u00a0Messages ».'),
+  );
+  const close = notifOverlay('notif-ask-overlay', panel, 'notif-title', giftAfterNotif);
+  later.addEventListener('click', () => close());
+  yes.addEventListener('click', async () => {
+    // iPhone sans l'appli, Messenger : le guide pas à pas prend la place de la proposition.
+    if (needsNotifGuide()) { close({ then: openNotifGuide }); return; }
+    await enableNotifications(yes);
+    close();
+  });
+}
+
+/**
+ * Après les écrans de la première connexion (ou en arrivant par le lien du guide) : propose
+ * les notifications, si elles ne sont ni activées, ni refusées, ni impossibles ici.
+ */
+async function maybeProposeNotifications({ fromLink = false } = {}) {
+  if (notifProposed || !state?.authenticated || storage.get(notifAskedKey(), false)) return;
+  if (document.querySelector('.gift-overlay')) return;
+  if (!fromLink && new URLSearchParams(location.search).get('ouvrir')) return; // venu lire un message
+  if (!needsNotifGuide()) {
+    if (!pushSupported() || Notification.permission !== 'default') return;
+    try { if (await currentSubscription()) return; } catch { /* on propose quand même */ }
+  }
+  if (notifProposed || document.querySelector('.gift-overlay')) return;
+  // Une discussion (ou une question) est ouverte : on ne passe pas par-dessus, on attend
+  // qu'elle soit fermée pour proposer.
+  if (chat?.isOpen() || document.querySelector('dialog[open]')) {
+    setTimeout(() => maybeProposeNotifications({ fromLink }), 2000);
+    return;
+  }
+  notifProposed = true;
+  storage.set(notifAskedKey(), true);
+  // Revenu par le lien du guide (Safari après Messenger) : directement la suite du guide.
+  if (fromLink && needsNotifGuide()) openNotifGuide();
+  else openNotifProposal();
 }
 
 function wishlistPillText() {
@@ -1548,6 +1898,34 @@ function letterSheet(body, signName, { compact = false, read = false } = {}) {
   );
 }
 
+/**
+ * Position verticale du curseur dans un champ de texte (en pixels depuis le haut du texte),
+ * mesurée sur une copie invisible du champ. null si le curseur n'est pas connu.
+ */
+function caretOffset(area) {
+  if (area.selectionEnd == null) return null;
+  const cs = getComputedStyle(area);
+  const mirror = document.createElement('div');
+  for (const prop of ['boxSizing', 'width', 'paddingTop', 'paddingRight', 'paddingBottom', 'paddingLeft', 'borderTopWidth', 'borderRightWidth', 'borderBottomWidth', 'borderLeftWidth', 'fontFamily', 'fontSize', 'fontWeight', 'fontStyle', 'lineHeight', 'letterSpacing', 'wordSpacing', 'textIndent', 'tabSize']) {
+    mirror.style[prop] = cs[prop];
+  }
+  mirror.style.setProperty('position', 'absolute');
+  mirror.style.setProperty('visibility', 'hidden');
+  mirror.style.setProperty('top', '0');
+  mirror.style.setProperty('left', '-9999px');
+  mirror.style.setProperty('white-space', 'pre-wrap');
+  mirror.style.setProperty('overflow-wrap', 'break-word');
+  mirror.style.setProperty('border-style', 'solid');
+  mirror.textContent = area.value.slice(0, area.selectionEnd);
+  const mark = document.createElement('span');
+  mark.textContent = '\u200b';
+  mirror.append(mark);
+  document.body.append(mirror);
+  const y = mark.offsetTop;
+  mirror.remove();
+  return y;
+}
+
 /** Le texte d'une lettre, en lecture (les liens sont cliquables). */
 const letterText = (text) => el('div', { class: 'letter-text wishlist-text' }, linkify(text));
 
@@ -1655,19 +2033,20 @@ function renderWishlistCard(initial, draft = null) {
     updateStatus();
     area.grow();
     if (!preview.hidden) togglePreview(true);
-    savebar.hidden = document.activeElement !== area;
+    updateSavebar();
   };
   // Pendant l'écriture (surtout sur téléphone, clavier ouvert) : une barre reste collée en bas
   // de l'écran avec « Enregistrer » et « Terminé » (qui referme le clavier).
-  const doneBtn = el('button', { class: 'btn btn-ghost btn-small letter-done', type: 'button', hidden: true, onclick: () => area.blur() }, '✓ Terminé');
+  // « Terminé » garde le brouillon et ramène la lettre à sa place dans la page.
+  const doneBtn = el('button', { class: 'btn btn-ghost btn-small letter-done', type: 'button', hidden: true, onclick: () => exitFocus() }, '✓ Terminé');
   const saveNow = el('button', { class: 'btn btn-primary btn-small', type: 'submit' }, '💾 Enregistrer');
   const savebar = el('div', { class: 'letter-savebar', hidden: true }, saveNow, doneBtn);
   const updateSavebar = () => {
-    const writing = document.activeElement === area;
+    const writing = Boolean(focusMode) || document.activeElement === area;
     savebar.hidden = !(writing || area.value !== saved);
     doneBtn.hidden = !writing;
   };
-  area.addEventListener('focus', updateSavebar);
+  area.addEventListener('focus', () => { enterFocus(); updateSavebar(); });
   area.addEventListener('blur', () => setTimeout(updateSavebar, 0));
   area.addEventListener('input', updateSavebar);
   const form = el('form', { novalidate: true, class: 'letter-form' },
@@ -1689,11 +2068,118 @@ function renderWishlistCard(initial, draft = null) {
     redrawDates();
     updateQuickbar();
     if (!preview.hidden) togglePreview(true);
+    // « Enregistrer » depuis la lettre au premier plan : c'est enregistré, on revient à la page.
+    if (focusMode) exitFocus();
     updateSavebar();
     toast('Lettre au Père Noël enregistrée ! 🎅', 'success');
   });
   area.addEventListener('input', () => updateQuickbar());
+  // ---- La lettre au premier plan (mode concentration) ----
+  // Toucher la feuille pour écrire : la carte passe en plein écran, seule, par-dessus tout le reste
+  // (onglets, en-tête, rappels, forêt assombrie). On en sort par « ‹ Retour », « ✓ Terminé »,
+  // « 💾 Enregistrer », la touche Échap ou le bouton « retour » du téléphone.
+  let focusMode = null;
+  const backBtn = el('button', { class: 'letter-focus-back', type: 'button', onclick: () => exitFocus() },
+    el('span', { 'aria-hidden': 'true' }, '‹'), 'Retour');
+  const focusTop = el('div', { class: 'letter-focus-top' },
+    backBtn,
+    el('p', { class: 'letter-focus-title', 'aria-hidden': 'true' }, '✉️ Ma lettre'));
+  /** Le clavier du téléphone réduit la partie visible de l'écran : la lettre s'y ajuste. */
+  const fitViewport = () => {
+    const vv = window.visualViewport;
+    if (!focusMode || !vv) return;
+    card.style.setProperty('--vv-top', `${Math.max(0, vv.offsetTop)}px`);
+    card.style.setProperty('--vv-h', `${vv.height}px`);
+    keepCaretVisible();
+  };
+  /** Le texte en cours de frappe reste visible, entre le haut et la barre « Enregistrer ». */
+  function keepCaretVisible() {
+    if (!focusMode || document.activeElement !== area) return;
+    requestAnimationFrame(() => {
+      if (!focusMode) return;
+      const y = caretOffset(area);
+      if (y == null) return;
+      const box = area.getBoundingClientRect();
+      const caretTop = box.top + y - area.scrollTop;
+      const lineH = parseFloat(getComputedStyle(area).lineHeight) || 32;
+      const top = card.getBoundingClientRect().top + focusTop.offsetHeight + 8;
+      const bottom = (savebar.hidden ? card.getBoundingClientRect().bottom : savebar.getBoundingClientRect().top) - 8;
+      if (caretTop + lineH > bottom) card.scrollTop += caretTop + lineH - bottom;
+      else if (caretTop < top) card.scrollTop -= top - caretTop;
+    });
+  }
+  const onFocusKey = (e) => {
+    if (e.key === 'Escape' && focusMode && !document.querySelector('dialog[open]')) { e.preventDefault(); exitFocus(); }
+  };
+  const onFocusPop = () => { if (focusMode && !history.state?.letter) exitFocus({ fromHistory: true }); };
+  function enterFocus() {
+    if (focusMode || !card.isConnected || card.closest('[hidden]') || document.body.classList.contains('gift-open')) return;
+    // Le reste de la page devient inaccessible (clavier, lecteur d'écran) tant que la lettre est devant.
+    const inerted = [];
+    for (let n = card; n && n !== root && n.parentElement; n = n.parentElement) {
+      for (const sib of n.parentElement.children) {
+        if (sib !== n && !sib.inert) { sib.inert = true; inerted.push(sib); }
+      }
+    }
+    // La carte garde sa place dans la page (rien ne bouge derrière, on y revient au même endroit).
+    const spacer = el('div', { class: 'letter-focus-spacer', 'aria-hidden': 'true' });
+    spacer.style.setProperty('height', `${card.offsetHeight}px`);
+    focusMode = { scrollY: window.scrollY, inerted, spacer };
+    letterFocusExit = exitFocus;
+    // Une entrée d'historique : le bouton « retour » du téléphone ramène la lettre à sa place.
+    history.pushState({ ...(history.state || {}), letter: true }, '');
+    card.before(spacer);
+    card.classList.add('letter-focus');
+    card.setAttribute('role', 'dialog');
+    card.setAttribute('aria-modal', 'true');
+    document.body.classList.add('letter-focus-open');
+    card.scrollTop = 0;
+    window.addEventListener('popstate', onFocusPop);
+    document.addEventListener('keydown', onFocusKey);
+    window.visualViewport?.addEventListener('resize', fitViewport);
+    window.visualViewport?.addEventListener('scroll', fitViewport);
+    fitViewport();
+    area.grow();
+    updateSavebar();
+    keepCaretVisible();
+  }
+  function exitFocus({ fromHistory = false, restore = true } = {}) {
+    if (!focusMode) { area.blur(); return; }
+    const { scrollY, inerted, spacer } = focusMode;
+    focusMode = null;
+    spacer.remove();
+    if (letterFocusExit === exitFocus) letterFocusExit = null;
+    for (const n of inerted) n.inert = false;
+    card.classList.remove('letter-focus');
+    card.removeAttribute('role');
+    card.removeAttribute('aria-modal');
+    card.style.removeProperty('--vv-top');
+    card.style.removeProperty('--vv-h');
+    document.body.classList.remove('letter-focus-open');
+    window.removeEventListener('popstate', onFocusPop);
+    document.removeEventListener('keydown', onFocusKey);
+    window.visualViewport?.removeEventListener('resize', fitViewport);
+    window.visualViewport?.removeEventListener('scroll', fitViewport);
+    const goBack = !fromHistory && history.state?.letter;
+    if (goBack) history.back();
+    if (document.activeElement === area || card.contains(document.activeElement)) area.blur();
+    if (!restore) return;
+    area.grow();
+    updateSavebar();
+    // La page revient là où on était, la lettre bien en vue (aussi après le « retour » de l'historique,
+    // qui remet la page à sa position).
+    const place = () => {
+      window.scrollTo(0, scrollY);
+      const r = card.querySelector('.letter-paper')?.getBoundingClientRect();
+      if (r && (r.bottom < 120 || r.top > window.innerHeight * 0.6)) window.scrollBy(0, r.top - Math.min(110, window.innerHeight * 0.2));
+    };
+    place();
+    if (goBack) window.addEventListener('popstate', () => requestAnimationFrame(place), { once: true });
+  }
+  for (const ev of ['input', 'click', 'keyup']) area.addEventListener(ev, keepCaretVisible);
+
   card = el('section', { class: 'card letter-card', id: 'wishlist-card', 'aria-labelledby': 'letter-title' },
+    focusTop,
     el('h2', { id: 'letter-title' }, '✉️ Ma lettre au Père Noël', todo),
     el('p', { class: 'muted small', id: 'letter-help' }, 'Ton Père Noël secret la lira pour te trouver le cadeau parfait : tes envies, tes goûts, ta taille, ce que tu n’aimes pas…'),
     letterDeadline(),
@@ -1733,6 +2219,34 @@ function chatPlaceholder(giftWaiting) {
       : el('p', {}, 'Après le tirage au sort, tu auras ici deux discussions anonymes : une avec la personne à qui tu offres un cadeau (elle ne saura pas que c’est toi), et une avec ton Père Noël secret.'),
   );
 }
+
+/** Petit Père Noël qui écrit sa lettre (SVG fixe, animé en CSS ; immobile si les animations sont réduites). */
+const SANTA_WRITING_SVG = '<svg class="tw-santa" viewBox="0 0 72 56" aria-hidden="true" focusable="false">'
+  // La lettre et les lignes qui s'écrivent
+  + '<g transform="rotate(-6 53 40)"><rect x="38" y="29" width="30" height="22" rx="2.5" fill="#fffdfa" stroke="#d9c3a6" stroke-width="1.2"/>'
+  + '<path class="tw-line tw-l1" d="M42 35.5h21" stroke="#b42a3a" stroke-width="1.7" stroke-linecap="round" fill="none"/>'
+  + '<path class="tw-line tw-l2" d="M42 40.5h21" stroke="#b42a3a" stroke-width="1.7" stroke-linecap="round" fill="none"/>'
+  + '<path class="tw-line tw-l3" d="M42 45.5h21" stroke="#b42a3a" stroke-width="1.7" stroke-linecap="round" fill="none"/></g>'
+  // Le manteau
+  + '<path d="M3 56c1-9 8-14 19-14s18 5 19 14z" fill="#c62f3e"/><path d="M20 43h4v13h-4z" fill="#fffdfa"/>'
+  // La tête (qui dodeline un peu)
+  + '<g class="tw-head">'
+  + '<circle cx="22" cy="27" r="10" fill="#f6cfb0"/>'
+  + '<path d="M11.5 27c0 9.5 4.5 16 10.5 16s10.5-6.5 10.5-16c-2.5 3-5.5 4-10.5 4s-8-1-10.5-4z" fill="#fffdfa" stroke="#e2d6cc" stroke-width=".6"/>'
+  + '<path d="M16.5 31.5c2-2.2 4-2.2 5.5-.4 1.5-1.8 3.5-1.8 5.5.4-2.5 1.6-8.5 1.6-11 0z" fill="#fffdfa" stroke="#e2d6cc" stroke-width=".5"/>'
+  + '<circle cx="15.8" cy="28" r="1.7" fill="#f2a29c"/><circle cx="28.2" cy="28" r="1.7" fill="#f2a29c"/>'
+  + '<g class="tw-eyes"><circle cx="19" cy="25.3" r="1.25" fill="#241c1f"/><circle cx="25.6" cy="25.3" r="1.25" fill="#241c1f"/></g>'
+  + '<circle cx="22.3" cy="28.8" r="1.8" fill="#e58b78"/>'
+  + '<path d="M12 21C13 11 19 6.5 27 7.5c6 .8 9.5 5.5 11 10.5-3-1.8-6-2.3-8.5-1.4.8 1.6 1 3.2.9 4.4z" fill="#c62f3e"/>'
+  + '<rect x="10" y="18.6" width="24" height="5.2" rx="2.6" fill="#fffdfa"/><circle cx="38.3" cy="18.6" r="3.1" fill="#fffdfa"/>'
+  + '</g>'
+  // La main (moufle) et le crayon, qui écrivent sur la lettre
+  + '<g transform="translate(44 36)"><g class="tw-hand">'
+  + '<g transform="rotate(32)"><path d="M0 0l-2.2-5.5h4.4z" fill="#f3d2a8"/><path d="M0 0l-.9-2.2h1.8z" fill="#241c1f"/>'
+  + '<rect x="-2.2" y="-17.5" width="4.4" height="12" fill="#f2b84b"/><rect x="-2.2" y="-20.5" width="4.4" height="3" rx=".8" fill="#f2a29c"/></g>'
+  + '<circle cx="4.2" cy="-7.2" r="3.6" fill="#1d6b48"/><path d="M1.3-9.6a3.6 3.6 0 0 1 5.6-.4" stroke="#fffdfa" stroke-width="1.6" fill="none" stroke-linecap="round"/>'
+  + '</g></g>'
+  + '</svg>';
 
 function createChat(drawnAt) {
   const messages = { recipient: [], santa: [] };
@@ -1782,6 +2296,76 @@ function createChat(drawnAt) {
     if (wasAtEnd) list.scrollTop = list.scrollHeight;
   };
   input.addEventListener('input', autoGrow);
+
+  // ---- « En train d'écrire »
+  // Moi : un petit signal pendant que je tape (au plus toutes les 2,5 s), arrêté à l'envoi,
+  // quand je quitte la zone de saisie ou que je vide le texte. Le serveur ne le garde
+  // que quelques secondes, en mémoire, et ne le montre qu'à l'autre personne.
+  let typingConv = null; // discussion où l'on a signalé « j'écris »
+  let typingSentAt = 0;
+  const sendTyping = (conv, on) => { api('POST', `${base}/typing`, { conv, typing: on, drawnAt }).catch(() => {}); };
+  function stopTyping({ silent = false } = {}) {
+    if (!typingConv) return;
+    if (!silent) sendTyping(typingConv, false);
+    typingConv = null;
+    typingSentAt = 0;
+  }
+  function noteTyping() {
+    if (!open) return;
+    if (!input.value.trim()) { stopTyping(); return; }
+    if (typingConv === open && Date.now() - typingSentAt < TYPING_SEND_MS) return;
+    if (typingConv && typingConv !== open) stopTyping();
+    typingConv = open;
+    typingSentAt = Date.now();
+    sendTyping(open, true);
+  }
+  input.addEventListener('input', noteTyping);
+  input.addEventListener('blur', () => stopTyping());
+
+  // L'autre personne : indicateur en bas de la discussion (là où arrivera son message).
+  const peerTyping = { santa: false, recipient: false };
+  const peerTypingTimers = {};
+  let typingEl = null;
+  let typingElConv = null;
+  function typingIndicator(conv) {
+    if (conv === 'santa') {
+      const art = el('span', { class: 'tw-art' });
+      art.innerHTML = SANTA_WRITING_SVG;
+      const label = state.santaName ? `${state.santaName} écrit…` : 'Ton Père Noël secret écrit…';
+      return el('div', { class: 'msg theirs typing typing-santa' },
+        el('div', { class: 'typing-santa-card' }, art, el('span', { class: 'typing-label' }, label)));
+    }
+    const who = nameOf('recipient');
+    return el('div', { class: 'msg theirs typing' },
+      el('div', { class: 'msg-body typing-dots' },
+        el('span', { 'aria-hidden': 'true' }), el('span', { 'aria-hidden': 'true' }), el('span', { 'aria-hidden': 'true' }),
+        el('span', { class: 'sr-only' }, `${who} écrit…`)));
+  }
+  function renderTyping() {
+    const show = Boolean(open && peerTyping[open]);
+    if (!show) {
+      if (typingEl) { typingEl.remove(); typingEl = null; typingElConv = null; }
+      return;
+    }
+    if (typingEl && typingElConv === open && typingEl.parentNode === list && list.lastElementChild === typingEl) return;
+    const wasAtEnd = atEnd();
+    if (!typingEl || typingElConv !== open) typingEl = typingIndicator(open);
+    typingElConv = open;
+    list.append(typingEl); // toujours en dernier, sous le dernier message
+    if (wasAtEnd || stuckToEnd) list.scrollTop = list.scrollHeight;
+  }
+  function setPeerTyping(status) {
+    for (const conv of ['santa', 'recipient']) {
+      const on = Boolean(status?.[conv]);
+      clearTimeout(peerTypingTimers[conv]);
+      if (on) {
+        // Filet de sécurité : sans confirmation du serveur, l'indicateur s'efface seul.
+        peerTypingTimers[conv] = setTimeout(() => { peerTyping[conv] = false; renderTyping(); }, TYPING_SHOW_MS);
+      }
+      peerTyping[conv] = on;
+    }
+    renderTyping();
+  }
   // Clavier du téléphone qui s'ouvre, écran qui tourne… : si on était en bas, on y reste.
   let stuckToEnd = true;
   list.addEventListener('scroll', () => {
@@ -1847,6 +2431,8 @@ function createChat(drawnAt) {
       return;
     }
     // Envoyé : on vide le brouillon de CETTE discussion (on a pu passer à l'autre entre-temps).
+    // (Le serveur a déjà arrêté « en train d'écrire » pour ce message.)
+    if (typingConv === conv) stopTyping({ silent: true });
     drafts[conv] = '';
     if (open === conv) {
       input.value = '';
@@ -1972,6 +2558,7 @@ function createChat(drawnAt) {
         );
       }));
     }
+    renderTyping(); // la liste vient d'être redessinée : l'indicateur revient en bas
     if (nearBottom || items.length === 0 || list.dataset.conv !== open) list.scrollTop = list.scrollHeight;
     else if (newBelow) showNewPill(); // reçu pendant qu'on lit plus haut : on le signale
     newBelow = false;
@@ -1989,6 +2576,17 @@ function createChat(drawnAt) {
   function openConv(conv, { push = true } = {}) {
     const previous = open;
     if (previous) drafts[previous] = input.value;
+    if (previous !== conv) stopTyping();
+    // Ouverte depuis la lettre au premier plan (bandeau « Nouveau message ! ») : la lettre
+    // se range d'abord (brouillon gardé), et la discussion reprend son entrée d'historique.
+    if (letterFocusExit) {
+      const letterEntry = history.state?.letter;
+      letterFocusExit({ fromHistory: true });
+      if (push && letterEntry) {
+        history.replaceState({ chat: conv }, '', '#discussion');
+        push = false;
+      }
+    }
     // La discussion s'ouvre par-dessus l'onglet Messagerie (on y revient en la fermant).
     selectTab('messages', { scroll: false });
     open = conv;
@@ -2013,15 +2611,18 @@ function createChat(drawnAt) {
     stuckToEnd = true;
     if (fine()) input.focus(); // sur téléphone, on n'ouvre pas le clavier d'office
     else title.focus();
+    pollSoon(); // nouvelles fraîches (messages, « en train d'écrire ») dès l'ouverture
   }
 
   function closeConv({ fromHistory = false } = {}) {
     if (!open) return;
     const was = open;
+    stopTyping();
     drafts[was] = input.value;
     input.value = '';
     hideNewPill();
     open = null;
+    renderTyping();
     screen.hidden = true;
     root.inert = false;
     document.body.classList.remove('chat-open');
@@ -2139,12 +2740,16 @@ function createChat(drawnAt) {
   async function fetchNew() {
     // Boucle tant qu'il reste des messages (pages de 500).
     const firstLoad = !loaded;
+    let typingNow = null;
     for (let i = 0; i < 20; i++) {
-      const { messages: batch } = await api('GET', `${base}/messages?after=${lastId}`);
+      const { messages: batch, typing } = await api('GET', `${base}/messages?after=${lastId}`);
+      typingNow = typing;
       add(batch, { announce: !firstLoad });
       if (batch.length < 500) break;
     }
     loaded = true;
+    // Le message arrivé remplace l'indicateur (le serveur l'arrête à l'envoi).
+    setPeerTyping(typingNow);
   }
 
   let lastLabelKey = `${state.santaName}|${state.recipient?.name}`;
@@ -2169,6 +2774,8 @@ function createChat(drawnAt) {
     },
     // Retire la page de discussion (tirage refait, déconnexion…)
     destroy: () => {
+      stopTyping();
+      for (const conv of ['santa', 'recipient']) clearTimeout(peerTypingTimers[conv]);
       if (open) {
         open = null;
         root.inert = false;
@@ -2233,6 +2840,7 @@ async function refreshState() {
 async function poll() {
   if (polling || document.visibilityState !== 'visible') return;
   polling = true;
+  lastMessagePoll = Date.now();
   try {
     if (Date.now() - lastStatePoll > STATE_POLL_MS) {
       lastStatePoll = Date.now();
@@ -2249,7 +2857,17 @@ async function poll() {
 function startPolling() {
   stopPolling();
   lastStatePoll = Date.now();
-  pollTimer = setInterval(poll, MESSAGE_POLL_MS);
+  lastMessagePoll = Date.now();
+  // Rythme normal toutes les 4 s ; toutes les 2 s seulement pendant qu'une discussion est ouverte.
+  pollTimer = setInterval(() => {
+    const every = chat?.isOpen() ? OPEN_CHAT_POLL_MS : MESSAGE_POLL_MS;
+    if (Date.now() - lastMessagePoll >= every - 250) poll();
+  }, 1000);
+}
+
+/** Rafraîchit bientôt (ex. discussion qui s'ouvre), sans attendre le prochain tour. */
+function pollSoon() {
+  if (pollTimer) setTimeout(poll, 0);
 }
 
 function stopPolling() {

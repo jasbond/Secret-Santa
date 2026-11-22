@@ -1,0 +1,108 @@
+/* Fond : forêt vivante (voir forest.js). Derrière tout le contenu, sans intercepter les clics. */
+
+.leg { transform-box: fill-box; transform-origin: 50% 0%; animation: step .5s ease-in-out infinite alternate; }
+.leg.b { animation-delay: -.25s; }
+@keyframes step { from { transform: rotate(-15deg); } to { transform: rotate(13deg); } }
+.graze { transform-box: fill-box; transform-origin: 10% 90%; transition: transform .7s ease-in-out; }
+/* Pattes : une vraie allure. Ordre des pattes dans le dessin : arrière loin, avant loin,
+   arrière près, avant près. Renne au pas (chaque patte à son tour), renard au trot
+   (pattes en diagonale ensemble). */
+.animal .leg { animation: none; }
+.animal.walking .leg { animation: gait 1s linear infinite; }
+.animal.deer.walking .leg:nth-of-type(1) { animation-delay: 0s; }
+.animal.deer.walking .leg:nth-of-type(2) { animation-delay: -.25s; }
+.animal.deer.walking .leg:nth-of-type(3) { animation-delay: -.5s; }
+.animal.deer.walking .leg:nth-of-type(4) { animation-delay: -.75s; }
+.animal.fox.walking .leg { animation-duration: .5s; }
+.animal.fox.walking .leg:nth-of-type(1), .animal.fox.walking .leg:nth-of-type(4) { animation-delay: 0s; }
+.animal.fox.walking .leg:nth-of-type(2), .animal.fox.walking .leg:nth-of-type(3) { animation-delay: -.25s; }
+@keyframes gait { 0% { transform: rotate(-16deg); } 50% { transform: rotate(14deg); } 100% { transform: rotate(-16deg); } }
+.animal.walking > :not(.leg) { animation: wbob .25s ease-in-out infinite alternate; }
+.animal.fox.walking > :not(.leg) { animation-duration: .125s; }
+@keyframes wbob { from { transform: translateY(0); } to { transform: translateY(-1.2px); } }
+.animal.grazing .graze { transform: rotate(40deg); }
+.animal.sniff .fox-head { transform: rotate(14deg); }
+@keyframes graze { 0%, 55%, 100% { transform: rotate(0); } 65%, 85% { transform: rotate(38deg); } }
+.owl-eyes { animation: blink 4.5s infinite; transform-box: fill-box; transform-origin: center; }
+@keyframes blink { 0%, 92%, 100% { transform: scaleY(1); } 95% { transform: scaleY(.1); } }
+.owl-head { transform-box: fill-box; transform-origin: 50% 80%; animation: owl-turn 7s ease-in-out infinite; }
+@keyframes owl-turn { 0%, 40%, 100% { transform: rotate(0); } 50%, 70% { transform: rotate(-18deg); } 80% { transform: rotate(12deg); } }
+
+
+/* Forêt : la scène prend le bas de l'écran ; les animaux traversent dans le dessin */
+.forest-holder { position: absolute; left: 0; right: 0; bottom: 0; height: 42vh; min-height: 230px; }
+.forest { position: absolute; inset: 0; width: 100%; height: 100%; }
+.cross { animation-name: cross; animation-timing-function: linear; animation-iteration-count: infinite; }
+.cross.rtl { animation-name: cross-rtl; }
+@keyframes cross { from { transform: translateX(-160px); } to { transform: translateX(calc(var(--w) * 1px + 60px)); } }
+@keyframes cross-rtl { from { transform: translateX(calc(var(--w) * 1px + 60px)); } to { transform: translateX(-160px); } }
+.flap { transform-box: fill-box; transform-origin: center; animation: flap .4s ease-in-out infinite alternate; }
+@keyframes flap { from { transform: scaleY(1); } to { transform: scaleY(-.6); } }
+
+
+/* Le Père Noël traverse le ciel de la forêt, puis disparaît un moment avant de repasser */
+.forest-sleigh { position: absolute; left: 0; top: 0; width: 210px; z-index: 1; animation: forest-fly 22s linear -2s infinite; }
+.forest-sleigh svg { display: block; width: 100%; height: auto; overflow: visible; filter: drop-shadow(0 0 12px rgba(255, 230, 160, .35)); }
+@keyframes forest-fly {
+  0% { transform: translate(-260px, 30vh) rotate(-7deg); }
+  30% { transform: translate(calc(50vw - 105px), 11vh) rotate(-2deg); }
+  60% { transform: translate(calc(100vw + 60px), 20vh) rotate(5deg); }
+  100% { transform: translate(calc(100vw + 60px), 20vh) rotate(5deg); }
+}
+.forest-sleigh .leg { transform-box: fill-box; transform-origin: 50% 0%; animation: gal .36s ease-in-out infinite alternate; }
+.forest-sleigh .leg.b { animation-delay: -.18s; }
+@keyframes gal { from { transform: rotate(-32deg); } to { transform: rotate(28deg); } }
+.forest-sleigh .bob { animation: fbob .36s ease-in-out infinite alternate; }
+.forest-sleigh .bob.late { animation-delay: -.12s; }
+.forest-sleigh .santa { animation: fbob .5s ease-in-out infinite alternate; }
+@keyframes fbob { from { transform: translateY(0); } to { transform: translateY(-3px); } }
+.forest-sleigh .rudolph { filter: drop-shadow(0 0 4px #ff4d5e); }
+.sleigh-dust { position: absolute; width: 5px; height: 5px; border-radius: 50%; background: #ffe7a0; box-shadow: 0 0 8px 2px rgba(242,184,75,.8); }
+
+/* Forêt : la scène prend le bas de l'écran ; les animaux traversent dans le dessin */
+.forest-holder { position: absolute; left: 0; right: 0; bottom: 0; height: 42vh; min-height: 230px; }
+.forest { position: absolute; inset: 0; width: 100%; height: 100%; }
+.cross { animation-name: cross; animation-timing-function: linear; animation-iteration-count: infinite; }
+.cross.rtl { animation-name: cross-rtl; }
+@keyframes cross { from { transform: translateX(-160px); } to { transform: translateX(calc(var(--w) * 1px + 60px)); } }
+@keyframes cross-rtl { from { transform: translateX(calc(var(--w) * 1px + 60px)); } to { transform: translateX(-160px); } }
+.flap { transform-box: fill-box; transform-origin: center; animation: flap .4s ease-in-out infinite alternate; }
+@keyframes flap { from { transform: scaleY(1); } to { transform: scaleY(-.6); } }
+
+
+/* Le Père Noël traverse le ciel de la forêt, puis disparaît un moment avant de repasser */
+.forest-sleigh { position: absolute; left: 0; top: 0; width: 210px; z-index: 1; animation: forest-fly 22s linear -2s infinite; }
+.forest-sleigh svg { display: block; width: 100%; height: auto; overflow: visible; filter: drop-shadow(0 0 12px rgba(255, 230, 160, .35)); }
+@keyframes forest-fly {
+  0% { transform: translate(-260px, 30vh) rotate(-7deg); }
+  30% { transform: translate(calc(50vw - 105px), 11vh) rotate(-2deg); }
+  60% { transform: translate(calc(100vw + 60px), 20vh) rotate(5deg); }
+  100% { transform: translate(calc(100vw + 60px), 20vh) rotate(5deg); }
+}
+.forest-sleigh .leg { transform-box: fill-box; transform-origin: 50% 0%; animation: gal .36s ease-in-out infinite alternate; }
+.forest-sleigh .leg.b { animation-delay: -.18s; }
+@keyframes gal { from { transform: rotate(-32deg); } to { transform: rotate(28deg); } }
+.forest-sleigh .bob { animation: fbob .36s ease-in-out infinite alternate; }
+.forest-sleigh .bob.late { animation-delay: -.12s; }
+.forest-sleigh .santa { animation: fbob .5s ease-in-out infinite alternate; }
+@keyframes fbob { from { transform: translateY(0); } to { transform: translateY(-3px); } }
+.forest-sleigh .rudolph { filter: drop-shadow(0 0 4px #ff4d5e); }
+.sleigh-dust { position: absolute; width: 5px; height: 5px; border-radius: 50%; background: #ffe7a0; box-shadow: 0 0 8px 2px rgba(242,184,75,.8); }
+
+
+.forest-holder { pointer-events: none; }
+.rab { filter: drop-shadow(0 0 1.5px rgba(70, 90, 130, .55)); }
+.fox-head { transform-box: fill-box; transform-origin: 0% 60%; transition: transform .4s; }
+.cross.b1 { animation-duration: 30s; animation-delay: -5s; }
+.cross.b2 { animation-duration: 38s; animation-delay: -20s; }
+@media (prefers-reduced-motion: reduce) {
+  .forest-holder *, .forest-sleigh { animation: none !important; transition: none !important; }
+  .forest-sleigh { display: none; }
+}
+
+/* Sur ordinateur, la discussion est au centre : on voit la forêt, le ciel et la neige
+   tout autour (au lieu d'un fond sombre et flou). La page derrière est masquée. */
+@media (min-width: 760px) {
+  .chat-screen { background: transparent; -webkit-backdrop-filter: none; backdrop-filter: none; }
+  body:has(.chat-screen:not([hidden])) #app { visibility: hidden; }
+}

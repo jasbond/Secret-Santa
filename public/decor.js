@@ -1,7 +1,9 @@
 // Décor de Noël en arrière-plan : ciel d'hiver, guirlande lumineuse, neige qui tombe,
-// sapins enneigés. Purement décoratif (aria-hidden), derrière tout le contenu, sans
+// forêt vivante (sapins, animaux, Père Noël dans le ciel, voir forest.js). Purement décoratif (aria-hidden), derrière tout le contenu, sans
 // jamais intercepter les clics. Les tailles et positions sont posées via le CSSOM
 // (autorisé par la politique de sécurité, contrairement aux attributs style="").
+
+import { installForest } from './forest.js';
 
 const BULB_COLORS = ['#ff4d5e', '#ffd166', '#4fd18b', '#6cb6ff', '#ff9ff3'];
 
@@ -56,11 +58,15 @@ export function installDecor() {
   }
   layer.append(snow);
 
-  const trees = document.createElement('div');
-  trees.className = 'xmas-trees';
-  layer.append(trees);
-
   document.body.prepend(layer);
+  // La forêt vivante remplace l'ancienne rangée de sapins.
+  try {
+    installForest(layer, { reduceMotion });
+  } catch {
+    const trees = document.createElement('div');
+    trees.className = 'xmas-trees';
+    layer.append(trees);
+  }
 }
 
 if (document.body) installDecor();

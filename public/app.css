@@ -502,6 +502,55 @@ body.chat-open { overflow: hidden; }
 }
 .chat-tip { margin: 6px 0 0; font-size: 0.75rem; color: var(--muted); text-align: center; }
 
+/* ---------- « En train d'écrire » (bas de la discussion) ---------- */
+.msg.typing { flex: none; }
+/* Côté Père Noël secret : le petit Père Noël qui écrit sa lettre */
+.typing-santa-card {
+  display: inline-flex; align-items: center; gap: 8px; padding: 4px 14px 4px 6px;
+  background: var(--paper); border: 1px solid var(--line); border-radius: 18px 18px 18px 6px;
+  box-shadow: 0 1px 2px rgba(3, 10, 25, 0.06);
+}
+.tw-art { flex: none; display: block; width: 62px; height: 48px; }
+.tw-santa { display: block; width: 100%; height: 100%; overflow: visible; }
+.tw-hand { transform-box: fill-box; transform-origin: 20% 90%; }
+.typing-label { font: 700 0.88rem/1.25 var(--body); color: var(--berry-strong); }
+/* Côté personne à qui j'offre : une bulle « … » */
+.typing-dots { display: inline-flex; align-items: center; gap: 5px; padding: 13px 16px; min-height: 42px; }
+.typing-dots > span[aria-hidden] { width: 8px; height: 8px; border-radius: 50%; background: var(--muted); opacity: 0.55; }
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .typing-label { color: var(--berry); }
+}
+@media (prefers-reduced-motion: no-preference) {
+  .msg.typing { animation: typing-in 0.25s ease-out; }
+  @keyframes typing-in { from { opacity: 0; transform: translateY(6px); } }
+  .typing-dots > span[aria-hidden] { animation: typing-dot 1.2s ease-in-out infinite; }
+  .typing-dots > span[aria-hidden]:nth-child(2) { animation-delay: 0.16s; }
+  .typing-dots > span[aria-hidden]:nth-child(3) { animation-delay: 0.32s; }
+  @keyframes typing-dot { 0%, 60%, 100% { transform: translateY(0); opacity: 0.45; } 30% { transform: translateY(-4px); opacity: 1; } }
+  .tw-hand { animation: tw-write 1.8s ease-in-out infinite; }
+  @keyframes tw-write {
+    0% { transform: translate(0, 0) rotate(0deg); }
+    12% { transform: translate(4px, -0.6px) rotate(-4deg); }
+    24% { transform: translate(8px, 0.4px) rotate(3deg); }
+    36% { transform: translate(12px, -0.4px) rotate(-3deg); }
+    48% { transform: translate(15px, 0) rotate(2deg); }
+    58% { transform: translate(1px, 5px) rotate(0deg); }
+    70% { transform: translate(6px, 4.6px) rotate(-4deg); }
+    82% { transform: translate(10px, 5.4px) rotate(3deg); }
+    100% { transform: translate(0, 0) rotate(0deg); }
+  }
+  .tw-head { transform-box: view-box; transform-origin: 22px 42px; animation: tw-nod 1.8s ease-in-out infinite; }
+  @keyframes tw-nod { 0%, 100% { transform: rotate(-3deg); } 50% { transform: rotate(3deg); } }
+  .tw-eyes { transform-box: fill-box; transform-origin: center; animation: tw-blink 3.6s infinite; }
+  @keyframes tw-blink { 0%, 92%, 100% { transform: scaleY(1); } 95% { transform: scaleY(0.15); } }
+  .tw-line { stroke-dasharray: 22; animation: tw-ink 3.6s linear infinite; }
+  .tw-l2 { animation-name: tw-ink2; }
+  .tw-l3 { animation-name: tw-ink3; }
+  @keyframes tw-ink { 0% { stroke-dashoffset: 22; } 25%, 92% { stroke-dashoffset: 0; opacity: 1; } 100% { stroke-dashoffset: 0; opacity: 0; } }
+  @keyframes tw-ink2 { 0%, 25% { stroke-dashoffset: 22; } 50%, 92% { stroke-dashoffset: 0; opacity: 1; } 100% { stroke-dashoffset: 0; opacity: 0; } }
+  @keyframes tw-ink3 { 0%, 50% { stroke-dashoffset: 22; } 75%, 92% { stroke-dashoffset: 0; opacity: 1; } 100% { stroke-dashoffset: 0; opacity: 0; } }
+}
+
 /* ---------- Rappel « comment ça marche » ---------- */
 .howto-steps { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; }
 .howto-steps li { display: grid; grid-template-columns: 36px minmax(0, 1fr); gap: 10px; align-items: start; }
@@ -1700,7 +1749,180 @@ body.gift-open .toast.show { transform: translate(-50%, 0); }
 /* La barre est en bas : les messages de confirmation passent au-dessus d'elle */
 body:has(.letter-savebar:not([hidden])) .toast { bottom: calc(92px + env(safe-area-inset-bottom, 0px)); }
 
+/* ---------- Lettre au premier plan : on touche la feuille, il ne reste qu'elle ----------
+   La carte passe en plein écran par-dessus la page (forêt assombrie), seule la feuille reste,
+   avec « ‹ Retour » en haut et « Enregistrer / Terminé » en bas. La hauteur suit la partie
+   visible de l'écran (--vv-h, mise à jour quand le clavier du téléphone s'ouvre). */
+.letter-focus-top { display: none; }
+body.letter-focus-open { overflow: hidden; }
+#wishlist-card.letter-focus {
+  position: fixed; left: 0; right: 0; top: var(--vv-top, 0px); bottom: auto; z-index: 35;
+  height: 100vh; height: var(--vv-h, 100dvh);
+  display: flex; flex-direction: column;
+  margin: 0; border: 0; border-radius: 0; box-shadow: none;
+  padding: 0 max(12px, env(safe-area-inset-right, 0px)) 0 max(12px, env(safe-area-inset-left, 0px));
+  overflow-x: hidden; overflow-y: auto; overscroll-behavior: contain;
+  background: rgba(4, 10, 22, 0.88); -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px);
+  animation: none;
+}
+#wishlist-card.letter-focus > h2,
+#wishlist-card.letter-focus > #letter-help,
+#wishlist-card.letter-focus > .letter-deadline,
+#wishlist-card.letter-focus .letter-form > .actions { display: none; }
+#wishlist-card.letter-focus .letter-focus-top {
+  position: sticky; top: 0; z-index: 6; flex: none;
+  display: flex; align-items: center; gap: 12px;
+  margin: 0 calc(-1 * max(12px, env(safe-area-inset-left, 0px))) 0 calc(-1 * max(12px, env(safe-area-inset-right, 0px)));
+  padding: calc(8px + env(safe-area-inset-top, 0px)) max(12px, env(safe-area-inset-right, 0px)) 8px max(12px, env(safe-area-inset-left, 0px));
+  background: #060e1e; border-bottom: 1px solid rgba(242, 184, 75, 0.3);
+}
+.letter-focus-back {
+  flex: none; display: inline-flex; align-items: center; gap: 5px; min-height: 44px; padding: 4px 16px 4px 12px; margin: 0;
+  border-radius: 999px; border: 1px solid var(--gold-bright); background: var(--paper); color: var(--berry);
+  font: 800 0.95rem var(--body); cursor: pointer; box-shadow: 0 8px 20px -10px rgba(0, 0, 0, 0.5);
+}
+.letter-focus-back span { font: 700 1.5rem/1 var(--display); margin-top: -3px; }
+.letter-focus-back:hover { background: var(--gold-bg); }
+.letter-focus-title { margin: 0; min-width: 0; font: 600 1.1rem/1.2 var(--display); color: var(--scene-text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+#wishlist-card.letter-focus .letter-form {
+  flex: 1 0 auto; display: flex; flex-direction: column;
+  width: 100%; max-width: 620px; margin: 0 auto;
+}
+#wishlist-card.letter-focus .letter-paper { margin: 28px 2px 12px; }
+#wishlist-card.letter-focus .rubrics { order: 1; margin-bottom: 4px; }
+#wishlist-card.letter-focus .rubrics-title { color: var(--scene-muted); }
+#wishlist-card.letter-focus .letter-savebar {
+  order: 2; margin: auto auto calc(10px + env(safe-area-inset-bottom, 0px));
+  bottom: calc(10px + env(safe-area-inset-bottom, 0px));
+}
+@media (min-width: 700px) {
+  /* « ‹ Retour » (44 px) sort du flux : la barre garde sa hauteur pour qu'il y tienne en entier. */
+  #wishlist-card.letter-focus .letter-focus-top { justify-content: center; box-sizing: border-box; min-height: calc(60px + env(safe-area-inset-top, 0px)); }
+  #wishlist-card.letter-focus .letter-focus-top > .letter-focus-back { position: absolute; left: max(16px, calc(50% - 310px)); }
+  #wishlist-card.letter-focus .letter-paper { margin-top: 34px; }
+}
+@media (prefers-reduced-motion: no-preference) {
+  #wishlist-card.letter-focus .letter-paper { animation: letter-focus-in 0.28s cubic-bezier(0.2, 0.9, 0.3, 1.1); }
+  @keyframes letter-focus-in { from { opacity: 0; transform: translateY(16px) rotate(-0.4deg) scale(0.98); } to { transform: rotate(-0.4deg); } }
+}
+
 /* « Qui es-tu ? » quand on revient : « Continuer en tant que … » et « Je ne suis pas … » */
 .gate-card .continue { margin-top: 18px; }
 .gate-card .not-me { margin-top: 10px; white-space: normal; line-height: 1.3; }
 .gate-back { margin: -4px 0 4px -6px; }
+
+/* ---------- Notifications : proposition et guide pas à pas (plein écran) ---------- */
+.notif-overlay { place-items: start center; }
+.notif-overlay > .notif-modal { margin: auto 0; }
+.notif-modal {
+  position: relative; width: 100%; max-width: 480px; text-align: center;
+  border: 1.5px solid var(--gold-bright); box-shadow: 0 30px 80px -24px rgba(0, 0, 0, 0.65);
+}
+@media (prefers-reduced-motion: no-preference) { .notif-modal { animation: wish-in 0.45s cubic-bezier(0.2, 1.1, 0.4, 1); } }
+.notif-modal .eyebrow { color: var(--gold); margin: 0 0 4px; }
+.notif-modal h2 { margin: 0 0 8px; justify-content: center; text-wrap: balance; }
+.notif-modal h2:focus { outline: none; }
+.notif-modal .wish-actions { margin-top: 16px; }
+.notif-modal .notif-later { color: var(--muted); }
+.notif-modal > .small:last-child { margin: 10px 0 0; }
+.notif-guide { text-align: left; }
+.notif-guide .eyebrow { padding-right: 44px; }
+.notif-guide h2 { justify-content: flex-start; }
+.notif-guide .notif-later { margin-top: 14px; }
+
+/* La proposition : la cloche et la notification telle qu'elle arrivera */
+.np-art { display: grid; justify-items: center; gap: 4px; margin: 4px 0 14px; }
+.np-bell { font-size: 54px; line-height: 1; transform-origin: 50% 8%; }
+@media (prefers-reduced-motion: no-preference) {
+  .np-bell { animation: np-ring 2.6s ease-in-out 0.5s infinite; }
+  .np-bubble { animation: np-drop 0.6s cubic-bezier(0.2, 1.2, 0.4, 1) 0.35s both; }
+}
+@keyframes np-ring {
+  0%, 40%, 100% { transform: rotate(0); }
+  5% { transform: rotate(16deg); } 10% { transform: rotate(-14deg); } 15% { transform: rotate(10deg); }
+  20% { transform: rotate(-8deg); } 25% { transform: rotate(4deg); } 30% { transform: rotate(-2deg); }
+}
+@keyframes np-drop { from { opacity: 0; transform: translateY(-14px) scale(0.96); } }
+.np-bubble {
+  display: flex; align-items: center; gap: 10px; width: 100%; max-width: 340px; text-align: left;
+  padding: 10px 12px; border-radius: 18px; background: var(--paper-2); border: 1px solid var(--line);
+  box-shadow: 0 10px 24px -14px rgba(0, 0, 0, 0.45); font-size: 0.88rem; line-height: 1.25;
+}
+.np-bubble img { width: 36px; height: 36px; border-radius: 9px; flex: 0 0 auto; }
+.np-bubble strong, .np-bubble small { display: block; }
+.np-bubble small { color: var(--muted); font-size: 0.82rem; margin-top: 2px; }
+
+/* Le guide : une étape = un petit dessin + la consigne */
+.ng-steps { list-style: none; margin: 14px 0 0; padding: 0; display: grid; gap: 12px; }
+.ng-step {
+  display: grid; grid-template-columns: 118px minmax(0, 1fr); gap: 12px; align-items: center;
+  padding: 10px; border-radius: 18px; background: var(--paper-2); border: 1px solid var(--line);
+}
+.ng-text { display: flex; gap: 8px; align-items: flex-start; }
+.ng-text p { margin: 0; font-size: 0.95rem; line-height: 1.35; }
+.ng-num {
+  flex: 0 0 auto; display: grid; place-items: center; width: 26px; height: 26px; border-radius: 50%;
+  background: var(--berry-strong); color: #fff; font: 700 0.9rem var(--display, inherit);
+}
+.ng-art { display: grid; place-items: center; }
+.ng-phone {
+  width: 118px; border-radius: 14px; background: #f4f4f6; color: #1c1c1e; border: 1px solid #d9d9de;
+  box-shadow: 0 6px 14px -10px rgba(0, 0, 0, 0.5); font: 600 11px/1.2 -apple-system, system-ui, sans-serif;
+}
+.ng-ico { display: inline-grid; place-items: center; width: 20px; height: 20px; flex: 0 0 auto; }
+.ng-ico svg { width: 100%; height: 100%; }
+.ng-dim { color: #8e8e93; }
+.ng-hl { position: relative; color: #0a84ff; border-radius: 9px; box-shadow: 0 0 0 2.5px var(--gold-bright); background: #fff; }
+@media (prefers-reduced-motion: no-preference) {
+  .ng-hl { animation: ng-pulse 1.8s ease-in-out infinite; }
+}
+@keyframes ng-pulse {
+  0%, 100% { box-shadow: 0 0 0 2.5px var(--gold-bright), 0 0 0 2.5px rgba(242, 184, 75, 0.5); }
+  50% { box-shadow: 0 0 0 2.5px var(--gold-bright), 0 0 0 7px rgba(242, 184, 75, 0); }
+}
+.ng-bar { display: flex; align-items: center; justify-content: space-around; height: 44px; padding: 0 6px; font-size: 20px; }
+.ng-bar .ng-hl { display: grid; place-items: center; width: 32px; height: 32px; }
+.ng-bar .ng-hl .ng-ico { width: 22px; height: 22px; }
+.ng-dots { font-size: 11px; letter-spacing: 1px; }
+.ng-sheet { display: grid; gap: 3px; padding: 6px; }
+.ng-row { display: flex; align-items: center; gap: 6px; padding: 5px 6px; border-radius: 9px; background: #fff; }
+.ng-row .ng-ico { width: 16px; height: 16px; }
+.ng-row.ng-dim { background: #fff; opacity: 0.75; }
+.ng-row.ng-hl { color: #1c1c1e; }
+.ng-row.ng-hl .ng-ico { color: #0a84ff; }
+.ng-top { justify-content: space-between; background: none; padding: 2px 6px; }
+.ng-top .ng-dots { padding: 2px 6px; color: #1c1c1e; }
+.ng-home { display: flex; align-items: center; justify-content: center; gap: 5px; padding: 8px 4px; background: linear-gradient(160deg, #2d4a7a, #0a1a33); border-color: #0a1a33; }
+.ng-apps { display: grid; grid-template-columns: repeat(2, 22px); gap: 5px; align-items: start; }
+.ng-app { width: 22px; height: 22px; border-radius: 6px; background: rgba(255, 255, 255, 0.28); }
+.ng-app.ng-mine { grid-column: span 2; justify-self: center; width: 30px; height: auto; background: none; display: grid; justify-items: center; gap: 2px; box-shadow: none; animation: none; }
+.ng-mine img { width: 30px; height: 30px; border-radius: 8px; box-shadow: 0 0 0 2.5px var(--gold-bright); }
+@media (prefers-reduced-motion: no-preference) { .ng-mine img { animation: ng-pulse 1.8s ease-in-out infinite; } }
+.ng-mine small { color: #fff; font-size: 8px; white-space: nowrap; }
+.ng-arrow { color: var(--gold-bright); font-size: 13px; }
+.ng-fakebtn { padding: 5px 6px; font-size: 10px; color: #fff; background: var(--berry-strong); white-space: nowrap; }
+.ng-fallback { margin-top: 12px; display: grid; gap: 8px; justify-items: start; }
+.ng-fallback p { margin: 0; }
+.ng-copy { display: inline-flex; align-items: center; gap: 6px; }
+.ng-copy .ng-ico { width: 18px; height: 18px; }
+.ng-link { width: 100%; font-size: 0.85rem; }
+.ng-open { margin-top: 14px; display: grid; gap: 8px; }
+.ng-open > p { margin: 0; }
+.ng-bonus { margin: 14px 0 0; padding: 10px 12px; border-radius: 14px; background: var(--gold-bg); border: 1px solid var(--gold-bright); font-size: 0.92rem; }
+@media (max-width: 360px) {
+  .ng-step { grid-template-columns: 1fr; justify-items: center; }
+}
+
+/* ---------- Conseil « plein écran » (téléphone, hors appli installée) ---------- */
+.card.fs-tip { position: relative; padding: 14px 52px 14px 16px; border: 1.5px dashed var(--gold-bright); background: var(--gold-bg); color: var(--ink); }
+.fs-tip p { margin: 0 0 6px; }
+.fs-tip p:last-of-type { margin-bottom: 0; }
+.fs-tip-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+.fs-tip-close {
+  position: absolute; top: 8px; right: 8px; width: 36px; height: 36px; border-radius: 50%;
+  border: 1px solid var(--line); background: var(--paper-2); color: var(--ink); font-size: 16px; line-height: 1;
+  cursor: pointer; display: grid; place-items: center;
+}
+.fs-tip-close:focus-visible { outline: 3px solid var(--gold-bright); outline-offset: 2px; }
+/* Dans l’appli installée : jamais de conseil d'installation. */
+@media (display-mode: standalone) { .fs-tip { display: none; } }

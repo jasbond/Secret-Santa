@@ -3,6 +3,7 @@
   "short_name": "Secret Santa",
   "description": "Tirage au sort et discussions anonymes avec ton Père Noël secret.",
   "display": "standalone",
+  "display_override": ["fullscreen", "standalone"],
   "background_color": "#0a1a33",
   "theme_color": "#0a1a33",
   "lang": "fr",
