@@ -10,7 +10,13 @@ let assignments = null;
 let assignmentsDrawnAt = null;
 let assignmentsOpened = new Set(); // duos déjà dévoilés (un par un)
 
-const participantUrl = (p) => `${location.origin}/p/${encodeURIComponent(p.token)}`;
+// Lien personnel : court (ex. /noel/chloe) si le groupe a une adresse courte et que le prénom est unique.
+const participantUrl = (p) => {
+  const unique = p.slug && state?.participants?.filter((q) => q.slug === p.slug).length === 1;
+  return state?.shortName && unique
+    ? `${location.origin}/${encodeURIComponent(state.shortName)}/${encodeURIComponent(p.slug)}`
+    : `${location.origin}/p/${encodeURIComponent(p.token)}`;
+};
 const adminUrl = () => `${location.origin}/admin/${encodeURIComponent(token)}`;
 
 function invitation(p) {

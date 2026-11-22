@@ -461,6 +461,7 @@ export async function createStore(target = ':memory:', { now = () => Date.now() 
       id: p.id,
       name: p.name,
       token: p.token,
+      slug: nameSlug(p.name),
       hasCode: Boolean(p.code_hash),
       hasWishlist: p.wishlist.length > 0,
       resetCount: p.reset_count,
@@ -755,6 +756,22 @@ export async function createStore(target = ':memory:', { now = () => Date.now() 
     if (other && other.id !== group.id) throw new HttpError(409, 'Cette adresse courte est déjà prise.');
     await db.run('UPDATE groups SET short_name = ? WHERE id = ?', name, group.id);
     return name;
+  }
+
+  /** Prénom en adresse : « Salomé J » -> « salome-j ». */
+  const nameSlug = (name) => String(name).normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+
+  /** Lien personnel derrière /adresse-courte/prenom, ou null (prénom inconnu ou en double). */
+  async function participantTokenByShortName(value, rawName) {
+    const name = String(value ?? '').toLowerCase();
+    if (!SHORT_NAME_RE.test(name)) return null;
+    const g = await db.get('SELECT id FROM groups WHERE short_name = ?', name);
+    if (!g) return null;
+    const wanted = nameSlug(decodeURIComponent(String(rawName ?? '')));
+    if (!wanted) return null;
+    const found = (await listParticipants(g.id)).filter((p) => nameSlug(p.name) === wanted);
+    return found.length === 1 ? found[0].token : null;
   }
 
   /** Lien de groupe derrière une adresse courte, ou null. */
@@ -1338,6 +1355,7 @@ export async function createStore(target = ':memory:', { now = () => Date.now() 
     inviteView,
     setShortName,
     inviteTokenByShortName,
+    participantTokenByShortName,
     participantStatus,
     participantView,
     hasSession,

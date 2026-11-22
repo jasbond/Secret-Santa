@@ -1139,3 +1139,24 @@ test('adresse courte du lien de groupe (ex. /noel) choisie par l’organisateur'
   assert.equal((await admin('PUT', A, { shortName: '' })).json.shortName, null);
   assert.equal((await go('/noel')).status, 404);
 });
+
+test('liens personnels courts (ex. /noel/salome-j)', async () => {
+  const { admin, adminToken, view } = await createGroup(['Chloe', 'Salomé J', 'Salomé M', 'Kea']);
+  const go = (url) => fetch(baseUrl + url, { redirect: 'manual' });
+  assert.equal((await go('/sapin/chloe')).status, 404, 'pas encore d’adresse courte');
+  assert.equal((await admin('PUT', `/api/admin/${adminToken}/short-name`, { shortName: 'sapin' })).status, 200);
+  const fresh = (await admin('GET', `/api/admin/${adminToken}`)).json;
+  assert.deepEqual(fresh.participants.map((p) => p.slug), ['chloe', 'kea', 'salome-j', 'salome-m']);
+  const tokenOf = (n) => view.participants.find((p) => p.name === n).token;
+  for (const [url, who] of [['/sapin/chloe', 'Chloe'], ['/sapin/salome-j', 'Salomé J'], ['/sapin/Salome-M/', 'Salomé M'], ['/sapin/kea', 'Kea']]) {
+    const res = await go(url);
+    assert.equal(res.status, 302, url);
+    assert.equal(res.headers.get('location'), `/p/${tokenOf(who)}`, url);
+  }
+  assert.equal((await go('/sapin/inconnu')).status, 404);
+  assert.equal((await go('/autre/chloe')).status, 404);
+  // Les pages existantes ne sont pas touchées
+  assert.equal((await go(`/admin/${adminToken}`)).status, 200);
+  assert.equal((await go(`/p/${tokenOf('Kea')}`)).status, 200);
+  assert.equal((await go('/static/app.css')).status, 200);
+});

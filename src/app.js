@@ -485,6 +485,14 @@ export function createApp({
     })],
     // Adresse courte choisie par l'organisateur (ex. PUT {"shortName":"noel"} ; vide pour la retirer).
     ['PUT', /^\/api\/admin\/([^/]+)\/short-name$/, admin(async ({ group, body }) => { await store.setShortName(group, body.shortName); })],
+    // Lien personnel court (ex. /noel/chloe) : renvoie vers la page de la personne (protégée par son code).
+    ['GET', /^\/([a-z0-9-]{3,30})\/([^/]{1,80})\/?$/, async (req, res, [name, person]) => {
+      let token = null;
+      try { token = await store.participantTokenByShortName(name, person); } catch { token = null; }
+      if (!token) throw new HttpError(404, 'Page introuvable.');
+      res.writeHead(302, { Location: `/p/${token}`, 'Cache-Control': 'no-store' });
+      res.end();
+    }],
     // Adresse courte (ex. /noel) : renvoie vers le lien du groupe. En dernier, après toutes les autres pages.
     ['GET', /^\/([a-z0-9-]{3,30})\/?$/, async (req, res, [name]) => {
       const invite = await store.inviteTokenByShortName(name);
