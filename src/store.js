@@ -279,6 +279,9 @@ export async function createStore(target = ':memory:', { now = () => Date.now() 
   for (const g of await db.all('SELECT id FROM groups WHERE invite_token IS NULL')) {
     await db.run('UPDATE groups SET invite_token = ? WHERE id = ?', newToken(), g.id);
   }
+  // Adresse courte du lien de groupe (ex. /noel), choisie par l'organisateur.
+  if (!groupColumns.has('short_name')) await db.exec('ALTER TABLE groups ADD COLUMN short_name TEXT');
+  await db.exec('CREATE UNIQUE INDEX IF NOT EXISTS groups_short_name ON groups(short_name)');
 
   /** Date du jour (AAAA-MM-JJ) dans le fuseau de l'échange. */
   // Date du jour dans le fuseau du groupe (celui de l'organisateur, ex. Pacific/Tahiti).
@@ -483,6 +486,7 @@ export async function createStore(target = ':memory:', { now = () => Date.now() 
       serverNow: now(),
       hasAdminCode: Boolean(group.admin_code_hash),
       inviteToken: group.invite_token,
+      shortName: group.short_name || null,
       participants,
       exclusions,
       giftProgress,
@@ -733,6 +737,34 @@ export async function createStore(target = ':memory:', { now = () => Date.now() 
    * Page « Qui es-tu ? » du lien de groupe : liste des prénoms, avec pour chacun le
    * lien personnel (inutilisable sans le code secret) et s'il a déjà été activé.
    */
+  /** Adresse courte (ex. « noel ») : 3 à 30 lettres minuscules, chiffres ou tirets. */
+  const SHORT_NAME_RE = /^[a-z0-9](?:[a-z0-9-]{1,28})[a-z0-9]$/;
+  const RESERVED_SHORT_NAMES = new Set(['admin', 'api', 'static', 'healthz', 'sw', 'favicon', 'robots', 'index']);
+
+  /** L'organisateur choisit (ou retire, avec une valeur vide) l'adresse courte du lien de groupe. */
+  async function setShortName(group, value) {
+    const name = String(value ?? '').trim().toLowerCase();
+    if (!name) {
+      await db.run('UPDATE groups SET short_name = NULL WHERE id = ?', group.id);
+      return null;
+    }
+    if (!SHORT_NAME_RE.test(name) || RESERVED_SHORT_NAMES.has(name)) {
+      throw new HttpError(400, 'Adresse courte : 3 à 30 lettres minuscules, chiffres ou tirets (ex. « noel »).');
+    }
+    const other = await db.get('SELECT id FROM groups WHERE short_name = ?', name);
+    if (other && other.id !== group.id) throw new HttpError(409, 'Cette adresse courte est déjà prise.');
+    await db.run('UPDATE groups SET short_name = ? WHERE id = ?', name, group.id);
+    return name;
+  }
+
+  /** Lien de groupe derrière une adresse courte, ou null. */
+  async function inviteTokenByShortName(value) {
+    const name = String(value ?? '').toLowerCase();
+    if (!SHORT_NAME_RE.test(name)) return null;
+    const g = await db.get('SELECT invite_token FROM groups WHERE short_name = ?', name);
+    return g ? g.invite_token : null;
+  }
+
   async function inviteView(inviteToken) {
     if (typeof inviteToken !== 'string' || !TOKEN_RE.test(inviteToken)) throw new HttpError(404, 'Lien invalide.');
     const g = await db.get('SELECT * FROM groups WHERE invite_token = ?', inviteToken);
@@ -1319,6 +1351,8 @@ export async function createStore(target = ':memory:', { now = () => Date.now() 
     // participant
     participantByToken,
     inviteView,
+    setShortName,
+    inviteTokenByShortName,
     participantStatus,
     participantView,
     hasSession,

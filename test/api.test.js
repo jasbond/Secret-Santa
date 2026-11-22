@@ -1114,3 +1114,36 @@ test('« Je suis l’organisateur » depuis le lien du groupe, avec le code orga
   const plain = await createGroup(['Dee', 'Eve', 'Fox']);
   assert.equal((await device()('POST', `/api/g/${plain.view.inviteToken}/organisateur`, { code: '1234' })).status, 409);
 });
+
+test('adresse courte du lien de groupe (ex. /noel) choisie par l’organisateur', async () => {
+  const { admin, adminToken, view } = await createGroup();
+  const other = await createGroup(['Eve', 'Fred', 'Gus']);
+  const A = `/api/admin/${adminToken}/short-name`;
+  const go = (url) => fetch(baseUrl + url, { redirect: 'manual' });
+  // Pas encore choisie : page introuvable
+  assert.equal((await go('/noel')).status, 404);
+  // Formats refusés, noms réservés refusés
+  for (const bad of ['ab', 'Noël', 'no el', '-noel', 'admin', 'api', 'x'.repeat(31)]) {
+    assert.equal((await admin('PUT', A, { shortName: bad })).status, 400, bad);
+  }
+  // Seul l'organisateur peut la choisir
+  assert.equal((await device()('PUT', '/api/admin/abcdefghijklmnopqrstuvwx/short-name', { shortName: 'noel' })).status, 404);
+  const set = await admin('PUT', A, { shortName: 'Noel' });
+  assert.equal(set.status, 200);
+  assert.equal(set.json.shortName, 'noel', 'en minuscules');
+  // Redirection vers le lien du groupe, avec ou sans « / » final, majuscules comprises
+  for (const url of ['/noel', '/noel/']) {
+    const res = await go(url);
+    assert.equal(res.status, 302, url);
+    assert.equal(res.headers.get('location'), `/g/${view.inviteToken}`);
+  }
+  assert.equal((await go('/NOEL')).status, 404, 'adresse en minuscules uniquement');
+  // Déjà prise par un autre groupe
+  assert.equal((await other.admin('PUT', `/api/admin/${other.adminToken}/short-name`, { shortName: 'noel' })).status, 409);
+  // Les autres pages ne sont pas touchées
+  assert.equal((await go('/healthz')).status, 200);
+  assert.equal((await go('/')).status, 200);
+  // Retirer l'adresse courte
+  assert.equal((await admin('PUT', A, { shortName: '' })).json.shortName, null);
+  assert.equal((await go('/noel')).status, 404);
+});

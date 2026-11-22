@@ -483,6 +483,15 @@ export function createApp({
       await store.markRead(p, body.conv, body.lastId);
       sendJson(res, 200, { ok: true });
     })],
+    // Adresse courte choisie par l'organisateur (ex. PUT {"shortName":"noel"} ; vide pour la retirer).
+    ['PUT', /^\/api\/admin\/([^/]+)\/short-name$/, admin(async ({ group, body }) => { await store.setShortName(group, body.shortName); })],
+    // Adresse courte (ex. /noel) : renvoie vers le lien du groupe. En dernier, après toutes les autres pages.
+    ['GET', /^\/([a-z0-9-]{3,30})\/?$/, async (req, res, [name]) => {
+      const invite = await store.inviteTokenByShortName(name);
+      if (!invite) throw new HttpError(404, 'Page introuvable.');
+      res.writeHead(302, { Location: `/g/${invite}`, 'Cache-Control': 'no-store' });
+      res.end();
+    }],
   ];
 
   return async function handler(req, res) {
