@@ -131,18 +131,58 @@ async function load() {
     ));
     return;
   }
-  const { group, participants } = data;
+  data_ = data;
+  render();
+}
+
+let data_ = null;
+let showList = false; // « Je ne suis pas … » : la liste des prénoms, sur son propre écran
+
+/**
+ * Déjà venu sur cet appareil : un écran simple « Continuer en tant que … », et un lien
+ * « Je ne suis pas … » vers la liste des prénoms (où se trouve aussi l'organisateur).
+ * Première fois : directement la liste.
+ */
+function render() {
+  const { group, participants } = data_;
   document.title = `Qui es-tu ? · ${group.name}`;
+  going = false;
   const remembered = storage.get(rememberKey, null);
   const me = remembered && participants.find((p) => p.token === remembered.token);
+  const organiserSaved = !me && storage.get(organiserKey, null)?.token;
+  const returning = Boolean(me || organiserSaved);
+  const list = !returning || showList;
 
   // Seulement la date : le budget est rappelé sur la page de chacun.
-  const facts = [
-    group.eventDate ? `📅 ${formatDate(group.eventDate)}` : null,
-  ].filter(Boolean);
+  const facts = group.eventDate ? el('p', { class: 'gate-facts' }, `📅 ${formatDate(group.eventDate)}`) : null;
+  const head = (title) => [
+    el('div', { class: 'gate-icon', 'aria-hidden': 'true' }, '🎅'),
+    el('p', { class: 'eyebrow center' }, group.name),
+    el('h1', { id: 'gate-title', class: 'center' }, title),
+    facts,
+  ];
+
+  if (!list) {
+    const who = me ? me.name : "l'organisateur";
+    clear(root,
+      el('section', { class: 'card gate-card', 'aria-labelledby': 'gate-title' },
+        ...head(me ? `Bon retour, ${me.name} !` : 'Bon retour !'),
+        el('button', {
+          class: 'btn btn-primary btn-block continue', type: 'button',
+          onclick: () => (me ? go(me, null) : openOrganiser()),
+        }, `Continuer en tant que ${who}`),
+        el('button', {
+          class: 'btn btn-ghost btn-block not-me', type: 'button',
+          onclick: () => { showList = true; history.pushState({ list: true }, '', '#choisir'); render(); window.scrollTo(0, 0); },
+        }, `Je ne suis pas ${who} : choisir une autre personne`),
+      ),
+    );
+    if (window.matchMedia?.('(pointer: fine)').matches) root.querySelector('.continue')?.focus();
+    return;
+  }
 
   const people = el('div', { class: 'people' }, participants.map((p) => el('button', {
-    class: `person${me && me.token === p.token ? ' current' : ''}`, type: 'button',
+    class: 'person', type: 'button',
     onclick: (e) => go(p, e.currentTarget),
   },
     el('span', { class: 'avatar avatar-initial', 'aria-hidden': 'true' }, initial(p.name)),
@@ -153,13 +193,9 @@ async function load() {
 
   clear(root,
     el('section', { class: 'card gate-card', 'aria-labelledby': 'gate-title' },
-      el('div', { class: 'gate-icon', 'aria-hidden': 'true' }, '🎅'),
-      el('p', { class: 'eyebrow center' }, group.name),
-      el('h1', { id: 'gate-title', class: 'center' }, 'Qui es-tu ?'),
-      facts.length ? el('p', { class: 'gate-facts' }, facts.join('  ·  ')) : null,
-      me ? el('button', { class: 'btn btn-primary btn-block continue', type: 'button', onclick: () => go(me, root.querySelector('.person.current')) },
-        `Continuer en tant que ${me.name}`) : null,
-      me ? el('p', { class: 'gate-or' }, 'ou choisis un autre prénom') : el('p', { class: 'center muted' }, `${onComputer() ? 'Clique' : 'Appuie'} sur ton prénom pour ouvrir ta page.`),
+      returning ? el('button', { class: 'btn btn-ghost btn-small gate-back', type: 'button', onclick: () => history.back() }, '‹ Retour') : null,
+      ...head('Qui es-tu ?'),
+      el('p', { class: 'center muted' }, `${onComputer() ? 'Clique' : 'Appuie'} sur ton prénom pour ouvrir ta page.`),
       people,
       el('p', { class: 'gate-or' }, 'ou'),
       el('button', { class: 'btn btn-block organiser-btn', type: 'button', onclick: openOrganiser }, "🎩 Je suis l'organisateur"),
@@ -171,7 +207,23 @@ async function load() {
   // Zone d'annonce vide, prête avant le choix : « C'est toi, … ! » y sera écrit.
   if (!document.querySelector('.chosen-msg')) document.body.append(el('p', { class: 'chosen-msg', role: 'status', 'aria-live': 'polite' }));
   // Au clavier/souris seulement : sur téléphone, un cadre de focus ferait croire à une sélection.
-  if (window.matchMedia?.('(pointer: fine)').matches) (root.querySelector('.continue') || root.querySelector('.person'))?.focus();
+  if (window.matchMedia?.('(pointer: fine)').matches) root.querySelector('.person')?.focus();
 }
 
+// Bouton « retour » du téléphone : de la liste vers « Continuer en tant que … ».
+window.addEventListener('popstate', () => {
+  showList = location.hash === '#choisir';
+  if (data_) render();
+});
+
+// Retour arrière depuis une page personnelle : le navigateur peut réafficher l'ancienne
+// page telle quelle (prénom encore sélectionné, page grisée). On la redessine proprement.
+window.addEventListener('pageshow', (e) => {
+  if (!e.persisted) return;
+  document.querySelector('.chosen-msg')?.classList.remove('show', 'at-top');
+  showList = location.hash === '#choisir';
+  if (data_) render();
+});
+
+showList = location.hash === '#choisir';
 load();
