@@ -846,30 +846,15 @@ export async function createStore(target = ':memory:', { now = () => Date.now() 
     const p = await t.get('SELECT * FROM participants WHERE id = ?', participantId);
     if (!p) return { error: new HttpError(404, "Ce lien n'existe pas ou plus. Demande ton lien à l'organisateur.") };
     if (!p.code_hash) return { error: new HttpError(409, "Aucun code secret n'a encore été choisi pour ce lien.") };
-    const t0 = now();
-    if (p.locked_until > t0) {
-      const minutes = Math.ceil((p.locked_until - t0) / 60000);
-      const wait = minutes >= 120 ? `${Math.ceil(minutes / 60)} heures` : `${minutes} minute${minutes > 1 ? 's' : ''}`;
-      return { error: new HttpError(429, `Trop d'essais. Réessaie dans ${wait}.`) };
-    }
     const ok = typeof rawCode === 'string' && charLength(rawCode) <= LIMITS.codeMax && verifyCode(rawCode, p.code_hash);
     if (!ok) {
+      // Pas de blocage : après plus de 3 erreurs, on rappelle que Jason (l'organisateur)
+      // peut réinitialiser le code.
       const failed = p.failed_attempts + 1;
-      // Blocage croissant : 5 min, 10 min, 20 min… (24 h maximum).
-      const level = Math.floor(failed / LIMITS.failedAttemptsBeforeLock);
-      const lockedUntil = failed % LIMITS.failedAttemptsBeforeLock === 0
-        ? t0 + Math.min(LIMITS.lockMs * 2 ** (level - 1), LIMITS.maxLockMs)
-        : p.locked_until;
-      await t.run('UPDATE participants SET failed_attempts = ?, locked_until = ? WHERE id = ?', failed, lockedUntil, p.id);
-      const left = LIMITS.failedAttemptsBeforeLock - (failed % LIMITS.failedAttemptsBeforeLock);
-      if (left === LIMITS.failedAttemptsBeforeLock) {
-        const minutes = Math.ceil((lockedUntil - t0) / 60000);
-        const wait = minutes >= 120 ? `${Math.ceil(minutes / 60)} heures` : `${minutes} minute${minutes > 1 ? 's' : ''}`;
-        return { error: new HttpError(429, `Code incorrect. Trop d'essais : réessaie dans ${wait}.`) };
-      }
+      await t.run('UPDATE participants SET failed_attempts = ?, locked_until = 0 WHERE id = ?', failed, p.id);
       return {
-        error: new HttpError(401, left <= 2
-          ? `Code incorrect. Encore ${left} essai${left > 1 ? 's' : ''} avant un blocage temporaire.`
+        error: new HttpError(401, failed > 3
+          ? 'Code incorrect. Tu as oublié ton code ? Demande à Jason de le réinitialiser.'
           : 'Code incorrect.'),
       };
     }

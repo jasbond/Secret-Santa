@@ -204,18 +204,15 @@ test('entrées simultanées : compteur d\'essais exact, un seul premier code', a
   const loser = firsts.find((r) => !(r.status === 'fulfilled' && r.value.created));
   assert.equal(loser.status, 'rejected');
   assert.equal(loser.reason.status, 401, 'l\'autre code est vérifié (et compté comme un essai)');
-  // Cinq mauvais codes en même temps : tous comptés, blocage au 5e.
+  // Cinq mauvais codes en même temps : tous comptés, jamais de blocage.
   const anaRow = await store.participantByToken(ana.token);
   await store.enter(anaRow, '424242');
   const tries = await Promise.allSettled(Array.from({ length: 5 }, () => store.enter(anaRow, '000000')));
-  const statuses = tries.map((r) => r.reason?.status).sort();
-  assert.deepEqual(statuses, [401, 401, 401, 401, 429]);
+  assert.deepEqual(tries.map((r) => r.reason?.status), [401, 401, 401, 401, 401]);
   const row = await store.db.get('SELECT failed_attempts, locked_until FROM participants WHERE id = ?', ana.id);
   assert.equal(row.failed_attempts, 5);
-  assert.equal(row.locked_until, clock + 5 * 60 * 1000);
-  // Bloqué : même le bon code est refusé, sans changer le compteur.
-  await assert.rejects(store.enter(anaRow, '424242'), (err) => err.status === 429);
-  clock += 5 * 60 * 1000 + 1;
+  assert.equal(row.locked_until, 0);
+  // Le bon code passe tout de suite.
   const ok = await store.enter(anaRow, '424242');
   assert.equal(ok.failedAttempts, 5, 'la personne est prévenue des essais ratés');
   assert.equal((await store.db.get('SELECT failed_attempts FROM participants WHERE id = ?', ana.id)).failed_attempts, 0);

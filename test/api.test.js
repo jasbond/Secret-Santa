@@ -246,7 +246,7 @@ test('parcours complet : tirage, anonymat, messagerie, révélation', async () =
   assert.ok((await people.Bob.d('GET', people.Bob.url)).json.recipient);
 });
 
-test('code secret : connexion, blocage après 5 erreurs, déconnexion, réinitialisation', async () => {
+test('code secret : connexion, erreurs sans blocage (message pour Jason), déconnexion, réinitialisation', async () => {
   const { admin, adminToken, view } = await createGroup(['Emma', 'Hugo', 'Inès']);
   const emma = view.participants[0];
   const url = `/api/p/${emma.token}`;
@@ -263,18 +263,15 @@ test('code secret : connexion, blocage après 5 erreurs, déconnexion, réinitia
   assert.equal((await laptop('GET', url)).json.authenticated, false);
   assert.equal((await phone('GET', url)).json.authenticated, true);
 
-  // 5 erreurs -> blocage 5 minutes, même avec le bon code
-  for (let i = 0; i < 2; i++) assert.equal((await laptop('POST', `${url}/login`, { code: `10000${i}` })).json.error, 'Code incorrect.');
-  // Avertissement avant le blocage
-  assert.match((await laptop('POST', `${url}/login`, { code: '100002' })).json.error, /Encore 2 essais/);
-  assert.match((await laptop('POST', `${url}/login`, { code: '100003' })).json.error, /Encore 1 essai avant/);
-  const fifth = await laptop('POST', `${url}/login`, { code: '100004' });
-  assert.equal(fifth.status, 429);
-  assert.match(fifth.json.error, /réessaie dans 5 minutes/);
-  const locked = await laptop('POST', `${url}/login`, { code: '250012' });
-  assert.equal(locked.status, 429);
-  assert.match(locked.json.error, /5 minutes/);
-  clock += 5 * 60 * 1000 + 1;
+  // Pas de blocage : « Code incorrect. », puis après plus de 3 erreurs, le message pour Jason.
+  // (1 erreur déjà faite plus haut, effacée par la bonne connexion.)
+  for (let i = 0; i < 3; i++) assert.equal((await laptop('POST', `${url}/login`, { code: `10000${i}` })).json.error, 'Code incorrect.');
+  for (let i = 3; i < 12; i++) {
+    const res = await laptop('POST', `${url}/login`, { code: `1000${String(i).padStart(2, '0')}` });
+    assert.equal(res.status, 401);
+    assert.match(res.json.error, /Demande à Jason de le réinitialiser/);
+  }
+  // Le bon code passe toujours, tout de suite
   assert.equal((await laptop('POST', `${url}/login`, { code: '250012' })).status, 200);
 
   // L'organisateur réinitialise le code : toutes les sessions sont fermées
@@ -348,20 +345,15 @@ test('organisateur : participants, exclusions, paramètres, suppression', async 
   assert.equal((await admin('GET', `/api/p/${jade.token}`)).status, 404);
 });
 
-test('blocage croissant et nombre d’essais ratés signalé à la connexion', async () => {
+test('aucun blocage, et nombre d’essais ratés signalé à la connexion', async () => {
   const { view } = await createGroup(['Nora', 'Omar', 'Paul']);
   const url = `/api/p/${view.participants[0].token}`;
   const d = device();
   assert.equal((await d('POST', `${url}/setup`, { code: '240601' })).status, 200);
   const other = device();
-  for (let i = 0; i < 5; i++) await other('POST', `${url}/login`, { code: '99990' + i });
-  assert.match((await other('POST', `${url}/login`, { code: '240601' })).json.error, /5 minutes/);
-  clock += 5 * 60 * 1000 + 1;
-  for (let i = 0; i < 5; i++) await other('POST', `${url}/login`, { code: '88880' + i });
-  assert.match((await other('POST', `${url}/login`, { code: '240601' })).json.error, /10 minutes/, 'le blocage double');
-  clock += 10 * 60 * 1000 + 1;
+  for (let i = 0; i < 10; i++) assert.equal((await other('POST', `${url}/login`, { code: '9999' + String(i).padStart(2, '0') })).status, 401);
   const ok = await other('POST', `${url}/login`, { code: '240601' });
-  assert.equal(ok.status, 200);
+  assert.equal(ok.status, 200, 'jamais bloqué');
   assert.equal(ok.json.failedAttempts, 10, 'le participant est prévenu des essais ratés');
   assert.equal((await other('POST', `${url}/logout`, {})).status, 200);
   assert.equal((await other('POST', `${url}/login`, { code: '240601' })).json.failedAttempts, 0);

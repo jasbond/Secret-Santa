@@ -273,7 +273,10 @@ function deadlinePassed() {
   return today > d;
 }
 
-const inviteUrl = () => `${location.origin}/g/${encodeURIComponent(state.inviteToken)}`;
+// Lien du groupe : l'adresse courte (ex. /noel) si l'organisateur en a choisi une.
+const inviteUrl = () => (state.shortName
+  ? `${location.origin}/${encodeURIComponent(state.shortName)}`
+  : `${location.origin}/g/${encodeURIComponent(state.inviteToken)}`);
 
 function groupMessage() {
   const g = state.group;
